@@ -30,10 +30,11 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    default_space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-   
+
     spaces = relationship(
         "Space",
         secondary="space_users",
@@ -47,7 +48,6 @@ class Space(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    is_default = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -141,7 +141,7 @@ class Event(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     link_id = Column(UUID(as_uuid=True), ForeignKey("links.id"), nullable=False)
-    type = Column(String, nullable=False)  # CLICK or SCAN
+    type = Column(String, nullable=False)  
     created_at = Column(DateTime, default=datetime.utcnow)
     
    
