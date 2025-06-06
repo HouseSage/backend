@@ -1,134 +1,115 @@
-from typing import List
+from typing import List, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.models.models import Pixel, SpaceUser, SpaceUserRole, User
-from app.api.schemas import Pixel, PixelCreate, PixelUpdate
+from app.models.models import User as UserModel, SpaceUserRole as ModelSpaceUserRole
+from app.api import schemas
 from app.core.security import get_current_active_user
+from app.crud import crud_pixel, crud_space 
 
 router = APIRouter()
 
-@router.post("/", response_model=Pixel)
-def create_pixel(
-    pixel_in: PixelCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    
-    space_user = db.query(SpaceUser).filter(
-        SpaceUser.space_id == pixel_in.space_id,
-        SpaceUser.user_id == current_user.id,
-        SpaceUser.role.in_([SpaceUserRole.ADMIN, SpaceUserRole.OWNER])
-    ).first()
-    
-    if not space_user:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    db_pixel = Pixel(**pixel_in.dict())
-    db.add(db_pixel)
-    db.commit()
-    db.refresh(db_pixel)
-    return db_pixel
 
-@router.get("/", response_model=List[Pixel])
-def list_pixels(
-    space_id: UUID,
+def ensure_space_membership(db: Session, space_id: UUID, user_id: UUID) -> None:
+   
+    space = crud_space.get_space(db, space_id=space_id)
+    if not space:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Space with id {space_id} not found")
+    
+  
+    space_user = crud_space.get_space_user(db, space_id=space_id, user_id=user_id)
+    if not space_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not a member of the specified space.",
+        )
+
+def ensure_space_admin_or_owner(db: Session, space_id: UUID, user_id: UUID) -> None:
+  
+    space = crud_space.get_space(db, space_id=space_id)
+    if not space:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Space with id {space_id} not found")
+
+   
+    space_user = crud_space.get_space_user(db, space_id=space_id, user_id=user_id)
+    if not space_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not a member of the specified space.",
+        )
+    if space_user.role not in [ModelSpaceUserRole.ADMIN.value, ModelSpaceUserRole.OWNER.value]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User requires ADMIN or OWNER role in this space for this operation.",
+        )
+
+@router.post("/", response_model=schemas.Pixel, status_code=status.HTTP_201_CREATED)
+def create_pixel_endpoint(
+    pixel_in: schemas.PixelCreate,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Any:
+    
+    ensure_space_admin_or_owner(db, space_id=pixel_in.space_id, user_id=current_user.id)
+    
+    return crud_pixel.create_pixel(db=db, pixel_in=pixel_in, space_id=pixel_in.space_id)
+
+@router.get("/", response_model=List[schemas.Pixel])
+def list_pixels_in_space_endpoint(
+    space_id: UUID = Query(..., description="The ID of the space to list pixels from"),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Any:
     
-    space_user = db.query(SpaceUser).filter(
-        SpaceUser.space_id == space_id,
-        SpaceUser.user_id == current_user.id
-    ).first()
-    
-    if not space_user:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    pixels = db.query(Pixel).filter(
-        Pixel.space_id == space_id
-    ).offset(skip).limit(limit).all()
-    
-    return pixels
+    ensure_space_membership(db, space_id=space_id, user_id=current_user.id)
+    return crud_pixel.get_pixels_by_space(db, space_id=space_id, skip=skip, limit=limit)
 
-@router.get("/{pixel_id}", response_model=Pixel)
-def read_pixel(
+@router.get("/{pixel_id}", response_model=schemas.Pixel)
+def read_pixel_endpoint(
     pixel_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Any:
    
-    pixel = db.query(Pixel).filter(Pixel.id == pixel_id).first()
-    if not pixel:
-        raise HTTPException(status_code=404, detail="Pixel not found")
+    db_pixel = crud_pixel.get_pixel(db, pixel_id=pixel_id)
+    if not db_pixel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pixel not found")
     
+    ensure_space_membership(db, space_id=db_pixel.space_id, user_id=current_user.id)
+    return db_pixel
+
+@router.put("/{pixel_id}", response_model=schemas.Pixel)
+def update_pixel_endpoint(
+    pixel_id: UUID,
+    pixel_in: schemas.PixelUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_active_user),
+) -> Any:
   
-    space_user = db.query(SpaceUser).filter(
-        SpaceUser.space_id == pixel.space_id,
-        SpaceUser.user_id == current_user.id
-    ).first()
+    db_pixel = crud_pixel.get_pixel(db, pixel_id=pixel_id)
+    if not db_pixel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pixel not found")
     
-    if not space_user:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    ensure_space_admin_or_owner(db, space_id=db_pixel.space_id, user_id=current_user.id)
+    return crud_pixel.update_pixel(db=db, db_pixel=db_pixel, pixel_in=pixel_in)
+
+@router.delete("/{pixel_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_pixel_endpoint(
+    pixel_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_active_user),
+) -> None:
+   
+    db_pixel = crud_pixel.get_pixel(db, pixel_id=pixel_id)
+    if not db_pixel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pixel not found")
         
-    return pixel
-
-@router.put("/{pixel_id}", response_model=Pixel)
-def update_pixel(
-    pixel_id: UUID,
-    pixel_in: PixelUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-   
-    db_pixel = db.query(Pixel).filter(Pixel.id == pixel_id).first()
-    if not db_pixel:
-        raise HTTPException(status_code=404, detail="Pixel not found")
+    ensure_space_admin_or_owner(db, space_id=db_pixel.space_id, user_id=current_user.id)
     
-   
-    space_user = db.query(SpaceUser).filter(
-        SpaceUser.space_id == db_pixel.space_id,
-        SpaceUser.user_id == current_user.id,
-        SpaceUser.role.in_([SpaceUserRole.ADMIN, SpaceUserRole.OWNER])
-    ).first()
-    
-    if not space_user:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    update_data = pixel_in.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_pixel, field, value)
-    
-    db.add(db_pixel)
-    db.commit()
-    db.refresh(db_pixel)
-    return db_pixel
-
-@router.delete("/{pixel_id}", response_model=Pixel)
-def delete_pixel(
-    pixel_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-  
-    db_pixel = db.query(Pixel).filter(Pixel.id == pixel_id).first()
-    if not db_pixel:
-        raise HTTPException(status_code=404, detail="Pixel not found")
-    
-   
-    space_user = db.query(SpaceUser).filter(
-        SpaceUser.space_id == db_pixel.space_id,
-        SpaceUser.user_id == current_user.id,
-        SpaceUser.role.in_([SpaceUserRole.ADMIN, SpaceUserRole.OWNER])
-    ).first()
-    
-    if not space_user:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    db.delete(db_pixel)
-    db.commit()
-    return db_pixel
+    crud_pixel.delete_pixel(db, pixel_id=pixel_id)
+    return None
