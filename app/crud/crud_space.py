@@ -6,9 +6,11 @@ from app.api import schemas
 from app.models.models import SpaceUserRole
 
 
+# Returns a space by its UUID
 def get_space(db: Session, space_id: UUID) -> models.Space | None:
     return db.query(models.Space).filter(models.Space.id == space_id).first()
 
+# Returns all spaces a user is a member of
 def get_spaces_by_user(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> list[models.Space]:
    
     return (
@@ -20,6 +22,7 @@ def get_spaces_by_user(db: Session, user_id: UUID, skip: int = 0, limit: int = 1
         .all()
     )
 
+# Creates a new space and assigns the owner
 def create_space_with_owner(db: Session, space_in: schemas.SpaceCreate, owner_id: UUID) -> models.Space:
     
     db_space = models.Space(name=space_in.name, description=space_in.description)
@@ -37,6 +40,7 @@ def create_space_with_owner(db: Session, space_in: schemas.SpaceCreate, owner_id
     db.refresh(db_space)
     return db_space
 
+# Updates space details
 def update_space(db: Session, db_space: models.Space, space_in: schemas.SpaceUpdate) -> models.Space:
     update_data = space_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -46,6 +50,7 @@ def update_space(db: Session, db_space: models.Space, space_in: schemas.SpaceUpd
     db.refresh(db_space)
     return db_space
 
+# Deletes a space by its UUID
 def delete_space(db: Session, space_id: UUID) -> models.Space | None:
    
     db_space = get_space(db, space_id)
@@ -55,6 +60,7 @@ def delete_space(db: Session, space_id: UUID) -> models.Space | None:
     return db_space
 
 
+# Adds a user to a space with a specific role
 def add_user_to_space(
     db: Session, space_id: UUID, user_id: UUID, role: SpaceUserRole = SpaceUserRole.MEMBER
 ) -> models.SpaceUser:
@@ -64,6 +70,7 @@ def add_user_to_space(
     db.refresh(db_space_user)
     return db_space_user
 
+# Returns the SpaceUser association for a user and space
 def get_space_user(db: Session, space_id: UUID, user_id: UUID) -> models.SpaceUser | None:
     return (
         db.query(models.SpaceUser)
@@ -71,6 +78,7 @@ def get_space_user(db: Session, space_id: UUID, user_id: UUID) -> models.SpaceUs
         .first()
     )
 
+# Returns all users in a space
 def get_users_in_space(db: Session, space_id: UUID, skip: int = 0, limit: int = 100) -> list[models.User]:
     
     return (
@@ -82,6 +90,7 @@ def get_users_in_space(db: Session, space_id: UUID, skip: int = 0, limit: int = 
         .all()
     )
     
+# Returns all SpaceUser associations for a space
 def get_space_users_with_roles(db: Session, space_id: UUID, skip: int = 0, limit: int = 100) -> list[models.SpaceUser]:
     
     return (
@@ -92,6 +101,7 @@ def get_space_users_with_roles(db: Session, space_id: UUID, skip: int = 0, limit
         .all()
     )
 
+# Updates a user's role in a space
 def update_user_role_in_space(
     db: Session, space_id: UUID, user_id: UUID, new_role: SpaceUserRole
 ) -> models.SpaceUser | None:
@@ -103,6 +113,7 @@ def update_user_role_in_space(
         db.refresh(db_space_user)
     return db_space_user
 
+# Removes a user from a space
 def remove_user_from_space(db: Session, space_id: UUID, user_id: UUID) -> models.SpaceUser | None:
     db_space_user = get_space_user(db, space_id, user_id)
     if db_space_user:

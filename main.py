@@ -28,6 +28,7 @@ async def root():
     return {"message": "API"}
 
 
+# Dependency that provides a database session and ensures it is closed after use
 def get_db():
     db = SessionLocal()
     try:

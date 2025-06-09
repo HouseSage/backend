@@ -9,21 +9,25 @@ from pydantic import BaseModel, EmailStr
 
 from app.db.database import Base
 
+# Generates a new UUID string
 def generate_uuid():
     return str(uuid.uuid4())
 
 
+# Enum for user roles in a space
 class SpaceUserRole(str, Enum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"
     VIEWER = "VIEWER"
 
+# Enum for event types
 class EventType(str, Enum):
     CLICK = "CLICK"
     SCAN = "SCAN"
 
 
+# SQLAlchemy model for User
 class User(Base):
     __tablename__ = "users"
 
@@ -42,6 +46,7 @@ class User(Base):
         viewonly=True
     )
 
+# SQLAlchemy model for Space
 class Space(Base):
     __tablename__ = "spaces"
 
@@ -67,6 +72,7 @@ class Space(Base):
         Index('ix_spaces_name', 'name'),
     )
 
+# Association table for users and spaces with roles
 class SpaceUser(Base):
     __tablename__ = "space_users"
 
@@ -81,6 +87,7 @@ class SpaceUser(Base):
         Index('ix_space_users_space_id', 'space_id'),
     )
 
+# SQLAlchemy model for Domain
 class Domain(Base):
     __tablename__ = "domains"
 
@@ -98,6 +105,7 @@ class Domain(Base):
     
    
 
+# SQLAlchemy model for Link
 class Link(Base):
     __tablename__ = "links"
 
@@ -121,6 +129,7 @@ class Link(Base):
         Index('ix_links_space_id', 'space_id'),
     )
 
+# SQLAlchemy model for Pixel
 class Pixel(Base):
     __tablename__ = "pixels"
 
@@ -136,6 +145,7 @@ class Pixel(Base):
         Index('ix_pixels_space_id', 'space_id'),
     )
 
+# SQLAlchemy model for Event
 class Event(Base):
     __tablename__ = "events"
 

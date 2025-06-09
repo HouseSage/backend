@@ -3,6 +3,7 @@ from fastapi import APIRouter
 api_router = APIRouter()
 
 
+# Register all resource routers with the main API router
 from . import spaces, pixels, users, domains, links, events  
 from .spaces import router as spaces_router
 from .pixels import router as pixels_router

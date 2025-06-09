@@ -1,3 +1,4 @@
+# Imports FastAPI, SQLAlchemy, app models, schemas, security, and CRUD utilities for pixel API endpoints
 from typing import List, Any
 from uuid import UUID
 

@@ -4,10 +4,12 @@ from sqlalchemy.orm import Session
 from app.models import models
 from app.api import schemas
 
+# Returns an event by its UUID
 def get_event(db: Session, event_id: UUID) -> models.Event | None:
    
     return db.query(models.Event).filter(models.Event.id == event_id).first()
 
+# Returns all events for a given link, ordered by creation date (desc)
 def get_events_by_link(
     db: Session, link_id: UUID, skip: int = 0, limit: int = 1000
 ) -> list[models.Event]:
@@ -21,6 +23,7 @@ def get_events_by_link(
         .all()
     )
 
+# Returns all events with pagination, ordered by creation date (desc)
 def get_all_events(
     db: Session, skip: int = 0, limit: int = 1000
 ) -> list[models.Event]:
@@ -33,6 +36,7 @@ def get_all_events(
         .all()
     )
 
+# Creates a new event
 def create_event(db: Session, event: schemas.EventCreate) -> models.Event:
     
     db_event = models.Event(

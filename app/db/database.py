@@ -9,7 +9,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-
+# Dependency that provides a database session and ensures it is closed after use
 def get_db():
     db = SessionLocal()
     try:

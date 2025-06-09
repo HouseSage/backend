@@ -1,3 +1,4 @@
+# Imports FastAPI, SQLAlchemy, app schemas, and CRUD utilities for link API endpoints
 from typing import List, Any
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from app.api import schemas
 from app.crud import crud_link, crud_domain 
 from app.db.database import SessionLocal
 
-
+# Dependency that provides a database session for each request
 def get_db():
     db = SessionLocal()
     try:
@@ -16,7 +17,10 @@ def get_db():
     finally:
         db.close()
 
+# Initializes the API router for link endpoints
 router = APIRouter()
+
+# Link Endpoints
 
 @router.post("/", response_model=schemas.Link, status_code=status.HTTP_201_CREATED)
 def create_link_endpoint(link: schemas.LinkCreate, db: Session = Depends(get_db)) -> Any:

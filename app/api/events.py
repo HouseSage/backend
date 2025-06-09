@@ -8,7 +8,9 @@ from app.api import schemas
 from app.crud import crud_event, crud_link 
 from app.db.database import SessionLocal
 
+# Imports FastAPI, SQLAlchemy, app schemas, and CRUD utilities for event API endpoints
 
+# Dependency that provides a database session for each request
 def get_db():
     db = SessionLocal()
     try:
@@ -16,7 +18,10 @@ def get_db():
     finally:
         db.close()
 
+# Initializes the API router for event endpoints
 router = APIRouter()
+
+# Event Endpoints
 
 @router.post("/", response_model=schemas.Event, status_code=status.HTTP_201_CREATED)
 def create_event_endpoint(event: schemas.EventCreate, db: Session = Depends(get_db)) -> Any:

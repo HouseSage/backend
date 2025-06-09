@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 from pydantic_settings import BaseSettings
 
+# App configuration using Pydantic BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Quill"
     API_V1_STR: str = "/api/v1"
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
         "extra": "allow",
     }
     
+    # Initializes settings and sets DATABASE_URL if not provided
     def __init__(self, **data: Any):
         super().__init__(**data)
         if self.DATABASE_URL is None:

@@ -5,10 +5,12 @@ from sqlalchemy import and_
 from app.models import models
 from app.api import schemas
 
+# Returns a link by its UUID
 def get_link(db: Session, link_id: UUID) -> models.Link | None:
     
     return db.query(models.Link).filter(models.Link.id == link_id).first()
 
+# Returns a link by its short code and domain
 def get_link_by_domain_and_short_code(
     db: Session, short_code: str, domain_id: str | None
 ) -> models.Link | None:
@@ -22,22 +24,26 @@ def get_link_by_domain_and_short_code(
             and_(models.Link.short_code == short_code, models.Link.domain_id == domain_id)
         ).first()
 
+# Returns all links for a given space
 def get_links_by_space(
     db: Session, space_id: UUID, skip: int = 0, limit: int = 100
 ) -> list[models.Link]:
     
     return db.query(models.Link).filter(models.Link.space_id == space_id).offset(skip).limit(limit).all()
 
+# Returns all links for a given domain
 def get_links_by_domain(
     db: Session, domain_id: str, skip: int = 0, limit: int = 100
 ) -> list[models.Link]:
     
     return db.query(models.Link).filter(models.Link.domain_id == domain_id).offset(skip).limit(limit).all()
 
+# Returns all links with pagination
 def get_all_links(db: Session, skip: int = 0, limit: int = 100) -> list[models.Link]:
    
     return db.query(models.Link).offset(skip).limit(limit).all()
 
+# Creates a new link
 def create_link(db: Session, link: schemas.LinkCreate) -> models.Link:
     
     db_link = models.Link(
@@ -52,6 +58,7 @@ def create_link(db: Session, link: schemas.LinkCreate) -> models.Link:
     db.refresh(db_link)
     return db_link
 
+# Updates link details
 def update_link(db: Session, db_link: models.Link, link_in: schemas.LinkUpdate) -> models.Link:
 
     update_data = link_in.model_dump(exclude_unset=True)
@@ -67,6 +74,7 @@ def update_link(db: Session, db_link: models.Link, link_in: schemas.LinkUpdate) 
     db.refresh(db_link)
     return db_link
 
+# Deletes a link by its UUID
 def delete_link(db: Session, link_id: UUID) -> models.Link | None:
   
     db_link = get_link(db, link_id=link_id)

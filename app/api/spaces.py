@@ -10,9 +10,10 @@ from app.api import schemas
 from app.core.security import get_current_active_user
 from app.crud import crud_space, crud_user 
 
+# Initializes the API router for space endpoints
 router = APIRouter()
 
-
+# Utility/check functions for space membership and roles
 def check_space_membership(db: Session, space_id: UUID, user_id: UUID) -> schemas.SpaceUser | None:
     space_user = crud_space.get_space_user(db, space_id=space_id, user_id=user_id)
     if not space_user:
@@ -31,6 +32,7 @@ def check_space_owner(db: Session, space_id: UUID, user_id: UUID) -> schemas.Spa
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires OWNER role")
     return space_user
 
+# Space Endpoints
 @router.post("/", response_model=schemas.Space, status_code=status.HTTP_201_CREATED)
 def create_space_endpoint(
     space_in: schemas.SpaceCreate,
@@ -95,8 +97,7 @@ def delete_space_endpoint(
     crud_space.delete_space(db, space_id=space_id)
     return None
 
-
-
+# User-in-Space Endpoints
 @router.get("/{space_id}/users", response_model=List[schemas.User])
 def list_users_in_space_endpoint(
     space_id: UUID,

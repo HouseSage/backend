@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 
 
+# Space Schemas
 class SpaceBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -26,6 +27,7 @@ class Space(SpaceInDB):
     pass
 
 
+# Pixel Schemas
 class PixelBase(BaseModel):
     name: str
     code: str
@@ -51,7 +53,7 @@ class Pixel(PixelInDB):
     pass
 
 
-
+# User Schemas
 class UserBase(BaseModel):
     email: EmailStr
 
@@ -76,7 +78,7 @@ class User(UserInDBBase):
     pass
 
 
-
+# Domain Schemas
 class DomainBase(BaseModel):
     domain: str
     is_active: Optional[bool] = True
@@ -101,7 +103,7 @@ class Domain(DomainInDBBase):
     pass
 
 
-
+# Link Schemas
 class LinkBase(BaseModel):
     space_id: UUID4
     domain_id: Optional[str] = None
@@ -127,7 +129,7 @@ class Link(LinkInDBBase):
     pass
 
 
-
+# Event Schemas
 class EventBase(BaseModel):
     link_id: UUID4
     type: str
@@ -147,7 +149,7 @@ class Event(EventInDBBase):
     pass
 
 
-
+# SpaceUser Schemas
 class PySpaceUserRole(str, PyEnum):
     OWNER = ModelSpaceUserRole.OWNER.value
     ADMIN = ModelSpaceUserRole.ADMIN.value

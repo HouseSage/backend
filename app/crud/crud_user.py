@@ -4,15 +4,19 @@ from app.models import models
 from app.api import schemas 
 from app.core.security import get_password_hash
 
+# Returns a user by their UUID
 def get_user(db: Session, user_id: UUID):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
+# Returns a user by their email address
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
+# Returns a list of users with pagination
 def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.User).offset(skip).limit(limit).all()
 
+# Creates a new user with hashed password
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = get_password_hash(user.password)
     db_user = models.User(
@@ -24,6 +28,7 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.refresh(db_user)
     return db_user
 
+# Updates user details (email, password, default space)
 def update_user(db: Session, db_user: models.User, user_in: schemas.UserUpdate):
     user_data = user_in.model_dump(exclude_unset=True)
     
@@ -42,6 +47,7 @@ def update_user(db: Session, db_user: models.User, user_in: schemas.UserUpdate):
     db.refresh(db_user)
     return db_user
 
+# Deletes a user by their UUID
 def delete_user(db: Session, user_id: UUID):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user:

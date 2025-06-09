@@ -8,6 +8,7 @@ from app.api import schemas
 from app.crud import crud_domain
 from app.db.database import SessionLocal
 
+# Dependency that provides a database session for each request
 def get_db():
     db = SessionLocal()
     try:
@@ -15,7 +16,10 @@ def get_db():
     finally:
         db.close()
 
+# Initializes the API router for domain endpoints
 router = APIRouter()
+
+# Domain Endpoints
 
 @router.post("/", response_model=schemas.Domain, status_code=status.HTTP_201_CREATED)
 def create_domain_endpoint(domain: schemas.DomainCreate, db: Session = Depends(get_db)) -> Any:

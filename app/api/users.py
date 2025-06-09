@@ -8,6 +8,8 @@ from app.api import schemas
 from app.crud import crud_user
 from app.db.database import SessionLocal
 
+# Imports FastAPI, SQLAlchemy, app schemas, and CRUD utilities for user API endpoints
+
 def get_db():
     db = SessionLocal()
     try:
