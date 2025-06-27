@@ -1,0 +1,270 @@
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, Form, Path
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+from sqlalchemy.orm import Session
+from typing import Optional, Dict, Any, List
+from uuid import UUID
+import json
+import logging
+from pydantic import BaseModel, HttpUrl
+
+from app.db.database import SessionLocal, get_db
+from app.models import models
+from app.crud import crud_link, crud_event
+from app.core.link_utils import LinkEncoder
+from app.core.config import settings
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Custom exception for link not found or inactive
+class LinkNotFoundError(HTTPException):
+    def __init__(self, detail: str = "Link not found or inactive"):
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+# Custom exception for password required
+class PasswordRequiredError(HTTPException):
+    def __init__(self, detail: str = "Password required"):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+            headers={"WWW-Authenticate": 'Basic realm="Link access"'},
+        )
+
+# Custom exception for invalid password
+class InvalidPasswordError(HTTPException):
+    def __init__(self, detail: str = "Invalid password"):
+        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+class RedirectResponseModel(BaseModel):
+    """Response model for link redirection."""
+    redirect_url: Optional[HttpUrl] = None
+    requires_password: bool = False
+    link_data: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            'HttpUrl': lambda v: str(v) if v else None
+        }
+
+class PasswordVerificationRequest(BaseModel):
+    """Request model for password verification."""
+    password: str
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "password": "your-password-here"
+            }
+        }
+
+async def get_link_or_raise(
+    db: Session, 
+    short_code: str, 
+    domain: Optional[str] = None
+) -> models.Link:
+    """Helper function to get a link or raise appropriate exceptions."""
+    db_link = crud_link.get_link_by_domain_and_short_code(
+        db, short_code=short_code, domain_id=domain
+    )
+    
+    if not db_link:
+        logger.warning(f"Link not found: {short_code} (domain: {domain})")
+        raise LinkNotFoundError()
+        
+    if not db_link.is_active:
+        logger.warning(f"Link is inactive: {short_code} (domain: {domain})")
+        raise LinkNotFoundError("This link is no longer active")
+        
+    return db_link
+
+@router.get(
+    "/go/{short_code}", 
+    response_model=RedirectResponseModel,
+    summary="Redirect to the target URL",
+    description="""
+    This endpoint handles the redirection of shortened URLs.
+    It checks if the link is active and password-protected.
+    If password is required but not provided, it returns a flag indicating so.
+    """
+)
+async def redirect_link(
+    request: Request,
+    short_code: str = Path(..., description="The short code of the link"),
+    domain: Optional[str] = Query(
+        None, 
+        description="Optional domain if using custom domains"
+    ),
+    password: Optional[str] = Query(
+        None, 
+        description="Password if the link is password-protected"
+    ),
+    db: Session = Depends(get_db)
+):
+    """
+    Handle link redirection. This endpoint is used by the Next.js frontend.
+    It returns either a redirect URL or indicates that a password is required.
+    """
+    try:
+        # Get the link from database
+        db_link = await get_link_or_raise(db, short_code, domain)
+        link_data = db_link.link_data or {}
+        
+        # Check if the link is password protected
+        if LinkEncoder.is_password_protected(link_data):
+            if not password or not LinkEncoder.verify_password(link_data, password):
+                logger.info(f"Password required for link: {short_code} (domain: {domain})")
+                return RedirectResponseModel(
+                    requires_password=True,
+                    link_data={
+                        "short_code": short_code,
+                        "domain": domain,
+                        "title": link_data.get("title"),
+                        "has_password": True
+                    }
+                )
+        
+        # Increment click count
+        crud_link.increment_link_clicks(db, db_link.id)
+        
+        # Log the click event
+        try:
+            event_data = {
+                "ip": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent"),
+                "referrer": request.headers.get("referer"),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            crud_event.create_event(
+                db=db,
+                event={
+                    "link_id": db_link.id,
+                    "type": "CLICK",
+                    "event_data": event_data
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to log click event: {str(e)}", exc_info=True)
+        
+        # Get the target URL
+        target_url = link_data.get("url")
+        if not target_url:
+            logger.error(f"No target URL found for link: {db_link.id}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Invalid link configuration"
+            )
+        
+        # If this is an API request, return the redirect URL in the response
+        if "application/json" in request.headers.get("accept", ""):
+            return RedirectResponseModel(
+                redirect_url=target_url,
+                requires_password=False,
+                link_data={
+                    "id": str(db_link.id),
+                    "title": link_data.get("title"),
+                    "short_code": short_code,
+                    "domain": domain,
+                    "clicks": link_data.get("clicks", 0)
+                }
+            )
+        
+        # Otherwise, perform the redirect
+        response = RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error processing redirect: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing your request"
+        ) from e
+
+@router.post(
+    "/go/verify-password", 
+    response_model=RedirectResponseModel,
+    summary="Verify password for a protected link",
+    description="""
+    Verify the password for a password-protected link.
+    If successful, returns a redirect URL with the password in the query string.
+    """
+)
+async def verify_password(
+    request: Request,
+    short_code: str = Form(..., description="The short code of the link"),
+    password: str = Form(..., description="The password to verify"),
+    domain: Optional[str] = Form(
+        None, 
+        description="Optional domain if using custom domains"
+    ),
+    db: Session = Depends(get_db)
+):
+    """
+    Verify password for a password-protected link.
+    """
+    try:
+        # Get the link from the database
+        db_link = await get_link_or_raise(db, short_code, domain)
+        link_data = db_link.link_data or {}
+        
+        # Check if the link is actually password protected
+        if not LinkEncoder.is_password_protected(link_data):
+            return RedirectResponseModel(
+                redirect_url=link_data.get("url"),
+                requires_password=False,
+                link_data={
+                    "id": str(db_link.id),
+                    "title": link_data.get("title"),
+                    "short_code": short_code,
+                    "domain": domain
+                }
+            )
+        
+        # Verify the password
+        if not LinkEncoder.verify_password(link_data, password):
+            logger.warning(f"Invalid password for link: {short_code} (domain: {domain})")
+            return RedirectResponseModel(
+                requires_password=True,
+                link_data={
+                    "short_code": short_code,
+                    "domain": domain,
+                    "title": link_data.get("title"),
+                    "has_password": True,
+                    "error": "Incorrect password"
+                }
+            )
+        
+        # Password is correct, create a redirect URL with the password
+        redirect_url = f"/go/{short_code}?password={password}"
+        if domain:
+            redirect_url = f"//{domain}{redirect_url}"
+        
+        logger.info(f"Password verified for link: {short_code} (domain: {domain})")
+        return RedirectResponseModel(
+            redirect_url=redirect_url,
+            requires_password=False,
+            link_data={
+                "id": str(db_link.id),
+                "title": link_data.get("title"),
+                "short_code": short_code,
+                "domain": domain
+            }
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying password: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while verifying the password"
+        ) from e

@@ -1,0 +1,25 @@
+# Test dependencies
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-mock>=3.10.0
+pytest-asyncio>=0.20.0
+httpx>=0.23.0
+pytest-httpx>=0.22.0
+
+# For code quality
+black>=22.0.0
+isort>=5.10.0
+flake8>=4.0.0
+mypy>=0.910
+
+# For test databases
+pytest-postgresql>=3.1.0
+pytest-sqlalchemy>=1.4.0
+
+# For mocking
+pytest-freezer>=0.4.0
+pytest-freezegun>=0.4.0
+
+# For code coverage
+coverage>=6.0.0
+codecov>=2.1.0
