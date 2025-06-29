@@ -13,7 +13,7 @@ from app.api import schemas
 from app.crud import crud_link, crud_domain
 from app.db.database import SessionLocal
 from app.services import LinkService
-from app.core.qr_code import generate_qr_code, get_qr_code_response
+from app.core.qr_code import get_qr_url
 
 # Dependency that provides a database session for each request
 def get_db():
@@ -163,42 +163,44 @@ def update_link_endpoint(
         200: {
             "content": {"image/png": {}},
             "description": "QR code image",
-        },
-        404: {"description": "Link not found"},
-    },
-    summary="Get QR code for a link",
-    description="""
-    Returns a QR code image for the specified link.
-    The QR code will encode the full short URL that redirects to the original URL.
-    """,
-)
 async def get_link_qr_code(
     link_id: UUID,
     db: Session = Depends(get_db),
     current_user: UUID | None = Depends(get_current_user)
-) -> StreamingResponse:
+):
     """
-    Get a QR code for a shortened link.
+    Get the URL for generating a QR code.
+    The actual QR code generation should be handled in the frontend.
     
     - **link_id**: The UUID of the link
-    """
-    db_link = crud_link.get_link(db, link_id=link_id)
-    if not db_link:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Link not found",
-        )
     
-    # In a real app, you'd check if the current user has permission to view this link
+    Returns:
+        A JSON object with the URL to be used for QR code generation
+    """
     try:
-        # Get the full short URL
+        # Get the link
+        db_link = crud_link.get_link(db, link_id=link_id)
+        if not db_link:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Link not found"
+            )
+        
+        # Check if user has permission to view this link
+        if db_link.user_id and db_link.user_id != current_user:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this link"
+            )
+        
+        # Get the full URL
         base_url = f"{settings.DEFAULT_DOMAIN}/"
         if db_link.domain_id:
             base_url = f"https://{db_link.domain_id}/"
         short_url = f"{base_url}{db_link.short_code}"
         
-        # Return the QR code as an image response
-        return get_qr_code_response(short_url)
+        # Return the URL for QR code generation
+        return get_qr_url(short_url)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

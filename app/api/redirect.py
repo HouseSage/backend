@@ -1,8 +1,9 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, Form, Path
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, Form, Path, Depends
+from typing import Optional, Dict, Any, List
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any, List
+
 from uuid import UUID
 import json
 import logging
@@ -38,6 +39,8 @@ class PasswordRequiredError(HTTPException):
 class InvalidPasswordError(HTTPException):
     def __init__(self, detail: str = "Invalid password"):
         super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+# Dependency to get form data
 
 class RedirectResponseModel(BaseModel):
     """Response model for link redirection."""
@@ -83,13 +86,14 @@ async def get_link_or_raise(
     return db_link
 
 @router.get(
-    "/go/{short_code}", 
+    "/go/{short_code}",
     response_model=RedirectResponseModel,
     summary="Redirect to the target URL",
     description="""
     This endpoint handles the redirection of shortened URLs.
     It checks if the link is active and password-protected.
     If password is required but not provided, it returns a flag indicating so.
+    Also handles password verification via POST request.
     """
 )
 async def redirect_link(
@@ -103,10 +107,12 @@ async def redirect_link(
         None, 
         description="Password if the link is password-protected"
     ),
+
     db: Session = Depends(get_db)
 ):
     """
-    Handle link redirection. This endpoint is used by the Next.js frontend.
+    Handle link redirection and password verification.
+    This endpoint is used by the Next.js frontend.
     It returns either a redirect URL or indicates that a password is required.
     """
     try:
@@ -114,7 +120,7 @@ async def redirect_link(
         db_link = await get_link_or_raise(db, short_code, domain)
         link_data = db_link.link_data or {}
         
-        # Check if the link is password protected
+            # Check if the link is password protected
         if LinkEncoder.is_password_protected(link_data):
             if not password or not LinkEncoder.verify_password(link_data, password):
                 logger.info(f"Password required for link: {short_code} (domain: {domain})")
@@ -160,8 +166,8 @@ async def redirect_link(
                 detail="Invalid link configuration"
             )
         
-        # If this is an API request, return the redirect URL in the response
-        if "application/json" in request.headers.get("accept", ""):
+        # If this is an API request or form submission, return the redirect URL in the response
+        if "application/json" in request.headers.get("accept", "") or request.method == "POST":
             return RedirectResponseModel(
                 redirect_url=target_url,
                 requires_password=False,
@@ -186,85 +192,4 @@ async def redirect_link(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing your request"
-        ) from e
-
-@router.post(
-    "/go/verify-password", 
-    response_model=RedirectResponseModel,
-    summary="Verify password for a protected link",
-    description="""
-    Verify the password for a password-protected link.
-    If successful, returns a redirect URL with the password in the query string.
-    """
-)
-async def verify_password(
-    request: Request,
-    short_code: str = Form(..., description="The short code of the link"),
-    password: str = Form(..., description="The password to verify"),
-    domain: Optional[str] = Form(
-        None, 
-        description="Optional domain if using custom domains"
-    ),
-    db: Session = Depends(get_db)
-):
-    """
-    Verify password for a password-protected link.
-    """
-    try:
-        # Get the link from the database
-        db_link = await get_link_or_raise(db, short_code, domain)
-        link_data = db_link.link_data or {}
-        
-        # Check if the link is actually password protected
-        if not LinkEncoder.is_password_protected(link_data):
-            return RedirectResponseModel(
-                redirect_url=link_data.get("url"),
-                requires_password=False,
-                link_data={
-                    "id": str(db_link.id),
-                    "title": link_data.get("title"),
-                    "short_code": short_code,
-                    "domain": domain
-                }
-            )
-        
-        # Verify the password
-        if not LinkEncoder.verify_password(link_data, password):
-            logger.warning(f"Invalid password for link: {short_code} (domain: {domain})")
-            return RedirectResponseModel(
-                requires_password=True,
-                link_data={
-                    "short_code": short_code,
-                    "domain": domain,
-                    "title": link_data.get("title"),
-                    "has_password": True,
-                    "error": "Incorrect password"
-                }
-            )
-        
-        # Password is correct, create a redirect URL with the password
-        redirect_url = f"/go/{short_code}?password={password}"
-        if domain:
-            redirect_url = f"//{domain}{redirect_url}"
-        
-        logger.info(f"Password verified for link: {short_code} (domain: {domain})")
-        return RedirectResponseModel(
-            redirect_url=redirect_url,
-            requires_password=False,
-            link_data={
-                "id": str(db_link.id),
-                "title": link_data.get("title"),
-                "short_code": short_code,
-                "domain": domain
-            }
-        )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        logger.error(f"Error verifying password: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while verifying the password"
         ) from e

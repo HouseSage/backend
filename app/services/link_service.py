@@ -13,7 +13,7 @@ from app.models import models
 from app.crud import crud_link, crud_domain
 from app.core.short_code import generate_short_code, is_valid_short_code, generate_unique_short_code
 from app.core.link_utils import LinkEncoder
-from app.core.qr_code import generate_qr_code
+# QR code generation is now handled in the frontend
 from app.core.config import settings
 from app.api.schemas import LinkCreate, LinkUpdate
 
@@ -80,15 +80,9 @@ class LinkService:
                     base_url = f"https://{link_data.domain_id}/"
                 short_url = f"{base_url}{db_link.short_code}"
                 
-                # Generate QR code
-                qr_code = generate_qr_code(short_url)
-                
-                # Convert QR code to base64 for storage
-                qr_code_b64 = base64.b64encode(qr_code).decode('utf-8')
-                
-                # Update link data with QR code
+                # Store the short URL for QR code generation in the frontend
                 link_data = db_link.link_data or {}
-                link_data['qr_code'] = qr_code_b64
+                link_data['qr_code_url'] = short_url
                 
                 # Update the link with QR code data
                 update_data = LinkUpdate(link_data=link_data)
