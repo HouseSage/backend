@@ -1,6 +1,7 @@
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from datetime import datetime
 
 from app.models import models
 from app.api import schemas
@@ -114,7 +115,9 @@ def create_link(db: Session, link: schemas.LinkCreate) -> models.Link:
         is_active=link.is_active if link.is_active is not None else True,
         link_data=link_data
     )
-    
+    # Handle pixel association
+    if getattr(link, 'pixel_ids', None):
+        db_link.pixels = db.query(models.Pixel).filter(models.Pixel.id.in_(link.pixel_ids)).all()
     db.add(db_link)
     db.commit()
     db.refresh(db_link)
@@ -151,6 +154,9 @@ def update_link(db: Session, db_link: models.Link, link_in: schemas.LinkUpdate) 
     if "password" in update_data:
         db_link.link_data["password"] = update_data["password"]
     
+    # Update pixel association
+    if 'pixel_ids' in update_data and update_data['pixel_ids'] is not None:
+        db_link.pixels = db.query(models.Pixel).filter(models.Pixel.id.in_(update_data['pixel_ids'])).all()
     db.add(db_link)
     db.commit()
     db.refresh(db_link)

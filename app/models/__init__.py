@@ -8,6 +8,5 @@ from app.models.models import (
     Pixel,
     Event,
     SpaceUserRole,
-    RedirectType,
     EventType
 )

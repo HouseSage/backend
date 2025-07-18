@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api import schemas
 from app.crud import crud_domain
 from app.db.database import SessionLocal
+from app.core.security import get_current_active_user
 
 # Dependency that provides a database session for each request
 def get_db():
@@ -22,22 +23,22 @@ router = APIRouter()
 # Domain Endpoints
 
 @router.post("/", response_model=schemas.Domain, status_code=status.HTTP_201_CREATED)
-def create_domain_endpoint(domain: schemas.DomainCreate, db: Session = Depends(get_db)) -> Any:
+def create_domain_endpoint(
+    domain_in: schemas.DomainCreate, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)
+) -> Any:
   
-    db_domain = crud_domain.get_domain(db, domain_name=domain.domain)
+    db_domain = crud_domain.get_domain(db, domain_name=domain_in.domain)
     if db_domain:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Domain already exists.",
         )
-    return crud_domain.create_domain(db=db, domain=domain)
+    return crud_domain.create_domain(db=db, domain=domain_in)
 
 @router.get("/", response_model=List[schemas.Domain])
 def read_domains_endpoint(
-    space_id: UUID | None = Query(None, description="Filter domains by Space ID"),
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db),
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
 ) -> Any:
    
     if space_id:

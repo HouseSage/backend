@@ -5,8 +5,10 @@ from app.core.exceptions import ValidationException
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum as PyEnum
+from uuid import UUID
 
 from app.core.config import settings
+from app.models.models import SpaceUserRole
 
 
 # Space Schemas
@@ -49,7 +51,7 @@ class SpaceInDBBase(SpaceBase):
     class Config:
         orm_mode = True
 
-class Space(SpaceInDB):
+class Space(SpaceInDBBase):
     pass
 
 
@@ -198,6 +200,7 @@ class LinkCreate(LinkBase):
     description: Optional[str] = None  # Optional description
     tags: Optional[List[str]] = None  # Optional tags for organization
     generate_qr: bool = False  # Whether to generate a QR code for this link
+    pixel_ids: Optional[List[UUID]] = None  # List of pixel IDs to associate
     
     class Config:
         schema_extra = {
@@ -211,17 +214,20 @@ class LinkCreate(LinkBase):
                 "title": "My Short Link",
                 "description": "A description of where this link points to",
                 "tags": ["marketing", "social"],
-                "generate_qr": False
+                "generate_qr": False,
+                "pixel_ids": ["123e4567-e89b-12d3-a456-426614174001", "123e4567-e89b-12d3-a456-426614174002"]
             }
         }
 
 class LinkUpdate(BaseModel):
     is_active: Optional[bool] = None
     link_data: Optional[dict] = None
+    pixel_ids: Optional[List[UUID]] = None
 
 class LinkInDBBase(LinkBase):
     id: UUID4
     created_at: datetime
+    pixel_ids: Optional[List[UUID]] = None
 
     class Config:
         orm_mode = True
@@ -260,6 +266,7 @@ class Link(LinkInDBBase):
         False,
         description="Whether the link is password protected"
     )
+    pixels: Optional[List["Pixel"]] = None
     
     class Config:
         orm_mode = True
@@ -317,10 +324,10 @@ class Event(EventInDBBase):
 
 # SpaceUser Schemas
 class PySpaceUserRole(str, PyEnum):
-    OWNER = ModelSpaceUserRole.OWNER.value
-    ADMIN = ModelSpaceUserRole.ADMIN.value
-    MEMBER = ModelSpaceUserRole.MEMBER.value
-    VIEWER = ModelSpaceUserRole.VIEWER.value
+    OWNER = SpaceUserRole.OWNER.value
+    ADMIN = SpaceUserRole.ADMIN.value
+    MEMBER = SpaceUserRole.MEMBER.value
+    VIEWER = SpaceUserRole.VIEWER.value
 
 class SpaceUserCreateBody(BaseModel):
     user_id: UUID4

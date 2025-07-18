@@ -6,7 +6,7 @@ api_router = APIRouter()
 public_router = APIRouter()
 
 # Register all resource routers with the main API router
-from . import spaces, pixels, users, domains, links, events, redirect
+from . import spaces, pixels, users, domains, links, events, redirect, auth
 from .spaces import router as spaces_router
 from .pixels import router as pixels_router
 from .users import router as users_router
@@ -14,6 +14,7 @@ from .domains import router as domains_router
 from .links import router as links_router
 from .events import router as events_router
 from .redirect import router as redirect_router
+from .auth import router as auth_router
 
 # Include versioned API routes
 api_router.include_router(spaces_router, prefix="/spaces", tags=["spaces"])
@@ -22,6 +23,7 @@ api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(domains_router, prefix="/domains", tags=["domains"])
 api_router.include_router(links_router, prefix="/links", tags=["links"])
 api_router.include_router(events_router, prefix="/events", tags=["events"])
+api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 
 # Include public routes (non-versioned)
 public_router.include_router(redirect_router, prefix="", tags=["redirects"])

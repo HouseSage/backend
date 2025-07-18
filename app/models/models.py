@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from enum import Enum
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, JSON, Text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, JSON, Text, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, EmailStr
@@ -105,6 +105,14 @@ class Domain(Base):
     
    
 
+# Association table for Link <-> Pixel
+link_pixels = Table(
+    "link_pixels",
+    Base.metadata,
+    Column("link_id", UUID(as_uuid=True), ForeignKey("links.id"), primary_key=True),
+    Column("pixel_id", UUID(as_uuid=True), ForeignKey("pixels.id"), primary_key=True),
+)
+
 # SQLAlchemy model for Link
 class Link(Base):
     __tablename__ = "links"
@@ -120,6 +128,9 @@ class Link(Base):
     link_data = Column(JSON, nullable=False, default=dict)
  
     events = relationship("Event", back_populates="link")
+    space = relationship("Space", back_populates="links")
+    domain = relationship("Domain", back_populates="links")
+    pixels = relationship("Pixel", secondary=link_pixels, back_populates="links")
     
    
     __table_args__ = (
@@ -140,7 +151,9 @@ class Pixel(Base):
     type = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-   
+    space = relationship("Space", back_populates="pixels")
+    links = relationship("Link", secondary=link_pixels, back_populates="pixels")
+
     __table_args__ = (
         Index('ix_pixels_space_id', 'space_id'),
     )

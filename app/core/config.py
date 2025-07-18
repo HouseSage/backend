@@ -10,14 +10,14 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
     # Database settings
-    USE_SQLITE: bool = True
+    USE_SQLITE: bool = False
     DATABASE_URL: Optional[str] = None
     
     # PostgreSQL settings (used if USE_SQLITE is False)
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_DB: str = "quill"
+    POSTGRES_DB: str = "myapp_db"
     POSTGRES_PORT: str = "5432"
     
     # CORS settings
@@ -37,27 +37,6 @@ class Settings(BaseSettings):
     
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 100  # Max requests per minute per IP
-    
-    # Analytics and tracking
-    TRACK_CLICKS: bool = True
-    STORE_IP_ADDRESS: bool = True
-    STORE_USER_AGENT: bool = True
-    STORE_REFERRER: bool = True
-    
-    # Cache settings
-    USE_REDIS: bool = False
-    REDIS_URL: str = "redis://localhost:6379/0"
-    CACHE_TTL: int = 300  # 5 minutes
-    
-    # Frontend URLs (for password reset, etc.)
-    FRONTEND_BASE_URL: str = "http://localhost:3000"
-    
-    # Email settings (for notifications, etc.)
-    SMTP_SERVER: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    EMAIL_FROM: str = "noreply@qill.me"
     
     model_config = {
         "case_sensitive": True,
