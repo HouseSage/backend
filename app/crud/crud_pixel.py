@@ -24,7 +24,9 @@ def get_pixels_by_space(db: Session, space_id: UUID, skip: int = 0, limit: int =
 
 # Creates a new pixel in a space
 def create_pixel(db: Session, pixel_in: schemas.PixelCreate, space_id: UUID) -> models.Pixel:
-    db_pixel = models.Pixel(**pixel_in.model_dump(), space_id=space_id)
+    data = pixel_in.model_dump()
+    data['space_id'] = space_id  # Overwrite or set space_id
+    db_pixel = models.Pixel(**data)
     db.add(db_pixel)
     db.commit()
     db.refresh(db_pixel)

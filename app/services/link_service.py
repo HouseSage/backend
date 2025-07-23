@@ -24,13 +24,13 @@ class LinkService:
         """Initialize the service with a database session."""
         self.db = db
     
-    def create_link(self, link_data: LinkCreate, user_id: UUID = None) -> models.Link:
+    def create_link(self, link_data: LinkCreate, user_id: UUID) -> models.Link:
         """
-        Create a new shortened link.
+        Create a new shortened link - supports both minimal and advanced usage.
         
         Args:
             link_data: Data for the new link
-            user_id: Optional user ID creating the link
+            user_id: User ID creating the link
             
         Returns:
             The created Link object
@@ -38,19 +38,24 @@ class LinkService:
         Raises:
             ValueError: If the short code is invalid or already in use
         """
-        # Validate short code if provided
-        if link_data.short_code and not is_valid_short_code(link_data.short_code):
-            raise ValueError(
-                f"Short code contains invalid characters. "
-                f"Use only letters and numbers (A-Z, a-z, 0-9)."
-            )
+        # Get user's default space (simplified - assume user has a default space)
+        # In a real app, you'd get this from the user record or require space_id in request
+        space_id = link_data.space_id or user_id  # Use user_id as space_id for simplicity
         
-        # Check if short code is already in use
-        existing_link = crud_link.get_link_by_domain_and_short_code(
-            self.db, link_data.short_code, link_data.domain_id
-        )
-        if existing_link:
-            raise ValueError(f"Short code '{link_data.short_code}' is already in use")
+        # Validate short code if provided
+        if link_data.short_code:
+            if not is_valid_short_code(link_data.short_code):
+                raise ValueError(
+                    "Short code contains invalid characters. "
+                    "Use only letters, numbers, hyphens, and underscores."
+                )
+            
+            # Check if short code is already in use
+            existing_link = crud_link.get_link_by_domain_and_short_code(
+                self.db, link_data.short_code, link_data.domain_id
+            )
+            if existing_link:
+                raise ValueError(f"Short code '{link_data.short_code}' is already in use")
         
         # If no short code provided, generate one
         if not link_data.short_code:
@@ -69,31 +74,7 @@ class LinkService:
                 raise ValueError(f"Domain '{link_data.domain_id}' is not verified")
         
         # Create the link
-        db_link = crud_link.create_link(self.db, link_data)
-        
-        # Generate QR code if requested
-        if link_data.generate_qr:
-            try:
-                # Get the full short URL
-                base_url = f"{settings.DEFAULT_DOMAIN}/"
-                if link_data.domain_id:
-                    base_url = f"https://{link_data.domain_id}/"
-                short_url = f"{base_url}{db_link.short_code}"
-                
-                # Store the short URL for QR code generation in the frontend
-                link_data = db_link.link_data or {}
-                link_data['qr_code_url'] = short_url
-                
-                # Update the link with QR code data
-                update_data = LinkUpdate(link_data=link_data)
-                db_link = crud_link.update_link(
-                    self.db, 
-                    db_link=db_link, 
-                    link_in=update_data
-                )
-            except Exception as e:
-                # Log the error but don't fail the request
-                print(f"Failed to generate QR code: {str(e)}")
+        db_link = crud_link.create_link(self.db, link_data, space_id)
         
         return db_link
     
@@ -104,7 +85,7 @@ class LinkService:
         user_id: UUID = None
     ) -> Optional[models.Link]:
         """
-        Update an existing link.
+        Update an existing link - simplified version.
         
         Args:
             link_id: ID of the link to update
@@ -120,21 +101,6 @@ class LinkService:
         db_link = crud_link.get_link(self.db, link_id=link_id)
         if not db_link:
             return None
-        
-        # If updating short code, validate it
-        if update_data.short_code and update_data.short_code != db_link.short_code:
-            if not is_valid_short_code(update_data.short_code):
-                raise ValueError(
-                    "Short code contains invalid characters. "
-                    "Use only letters and numbers (A-Z, a-z, 0-9)."
-                )
-            
-            # Check if new short code is already in use
-            existing = crud_link.get_link_by_domain_and_short_code(
-                self.db, update_data.short_code, db_link.domain_id
-            )
-            if existing and existing.id != link_id:
-                raise ValueError(f"Short code '{update_data.short_code}' is already in use")
         
         # Update the link
         return crud_link.update_link(self.db, db_link=db_link, link_in=update_data)

@@ -26,13 +26,12 @@ def get_all_domains(db: Session, skip: int = 0, limit: int = 100) -> list[models
 
 # Creates a new domain with a verification token
 def create_domain(db: Session, domain: schemas.DomainCreate) -> models.Domain:
-  
     verification_token = generate_verification_token()
     db_domain = models.Domain(
         domain=domain.domain,
-        is_active=domain.is_active if domain.is_active is not None else True,
+        is_active=True,  # Always set by backend
         space_id=domain.space_id,
-        verified=domain.verified if domain.verified is not None else False,
+        verified=False,  # Always set by backend
         verification_token=verification_token
     )
     db.add(db_domain)
@@ -42,17 +41,9 @@ def create_domain(db: Session, domain: schemas.DomainCreate) -> models.Domain:
 
 # Updates domain details (is_active, verified)
 def update_domain(db: Session, db_domain: models.Domain, domain_in: schemas.DomainUpdate) -> models.Domain:
-    
-    update_data = domain_in.model_dump(exclude_unset=True)
-
-    if "is_active" in update_data and update_data["is_active"] is not None:
-        db_domain.is_active = update_data["is_active"]
-    
-    if "verified" in update_data and update_data["verified"] is not None:
-        db_domain.verified = update_data["verified"]
-        if db_domain.verified:
-            db_domain.verification_token = None
-
+    # Do not allow user to update is_active or verified directly
+    # Only allow backend logic to update these fields if needed
+    # (You can add custom logic here if needed)
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)

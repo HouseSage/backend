@@ -38,7 +38,8 @@ def create_domain_endpoint(
 @router.get("/", response_model=List[schemas.Domain])
 def read_domains_endpoint(
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
+    current_user = Depends(get_current_active_user),
+    space_id: UUID = Query(None, description="Optional space ID to filter domains")
 ) -> Any:
    
     if space_id:

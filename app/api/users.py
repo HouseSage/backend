@@ -52,6 +52,13 @@ def read_users_endpoint(
     users = crud_user.get_users(db, skip=skip, limit=limit)
     return users
 
+@router.get("/me", response_model=schemas.User)
+def read_current_user_endpoint(current_user = Depends(get_current_active_user)):
+    """
+    Get the current authenticated user's information.
+    """
+    return current_user
+
 @router.get("/{user_id}", response_model=schemas.User)
 def read_user_endpoint(user_id: UUID, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)) -> Any:
     

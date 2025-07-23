@@ -168,16 +168,29 @@ async def redirect_link(
         
         # If this is an API request or form submission, return the redirect URL in the response
         if "application/json" in request.headers.get("accept", "") or request.method == "POST":
+            # Fetch associated pixels
+            pixels = []
+            if hasattr(db_link, "pixels") and db_link.pixels:
+                for pixel in db_link.pixels:
+                    pixels.append({
+                        "id": str(pixel.id),
+                        "name": pixel.name,
+                        "code": pixel.code,
+                        "type": pixel.type
+                    })
+            link_data_response = {
+                "id": str(db_link.id),
+                "title": link_data.get("title"),
+                "short_code": short_code,
+                "domain": domain,
+                "clicks": link_data.get("clicks", 0)
+            }
+            if pixels:
+                link_data_response["pixels"] = pixels
             return RedirectResponseModel(
                 redirect_url=target_url,
                 requires_password=False,
-                link_data={
-                    "id": str(db_link.id),
-                    "title": link_data.get("title"),
-                    "short_code": short_code,
-                    "domain": domain,
-                    "clicks": link_data.get("clicks", 0)
-                }
+                link_data=link_data_response
             )
         
         # Otherwise, perform the redirect

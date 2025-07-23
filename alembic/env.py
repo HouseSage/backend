@@ -7,6 +7,10 @@ from sqlalchemy import pool
 
 from alembic import context
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add the parent directory to the path so we can import the app
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -44,8 +48,7 @@ def run_migrations_offline():
     here as well.  By skipping the Engine creation
     we don't even need a DBAPI to be available.
 
-    Calls to context.execute() here emit the given string to the
-    script output.
+    Calls to context.execute() here emit the given string to the the script output.
 
     """
     url = config.get_main_option("sqlalchemy.url")

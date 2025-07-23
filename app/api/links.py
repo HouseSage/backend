@@ -39,71 +39,21 @@ router = APIRouter()
 
 @router.post("/", response_model=schemas.Link, status_code=status.HTTP_201_CREATED)
 def create_link_endpoint(
-    link: dict = Body(...),
-    request: Request = None,
+    link: schemas.LinkCreate = Body(...),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ) -> Any:
     """
     Create a new shortened link.
-    Allows minimal payload: {"url": "https://..."} or {"space_id": ..., "url": ...}
+    
+    Simple payload: {"url": "https://example.com"}
+    With custom code: {"url": "https://example.com", "short_code": "mylink"}
+    With title: {"url": "https://example.com", "title": "My Link"}
     """
     try:
-        required_fields = {"space_id", "short_code", "link_data"}
-        if not required_fields.issubset(link.keys()):
-            from app.models.models import User, Space
-            from app.crud import crud_space
-            from app.api.schemas import SpaceCreate
-            
-            user_obj = current_user if current_user else None
-            
-            # Use provided space_id or user's default
-            space_id = link.get("space_id")
-            if not space_id:
-                if user_obj and user_obj.default_space_id:
-                    space_id = str(user_obj.default_space_id)
-                else:
-                    # If no user or no default space, create or use a default public space
-                    default_space = db.query(Space).filter(Space.name == "Default").first()
-                    if not default_space:
-                        # Create a default space
-                        default_space = Space(
-                            name="Default",
-                            description="Default space for links without specific space"
-                        )
-                        db.add(default_space)
-                        db.commit()
-                        db.refresh(default_space)
-                    space_id = str(default_space.id)
-            
-            # Generate short_code if missing
-            import random, string
-            short_code = link.get("short_code") or ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-            # Wrap url in link_data if not present
-            link_data = link.get("link_data") or {"url": link.get("url")}
-            # Build the full payload
-            link_payload = {
-                "space_id": space_id,
-                "short_code": short_code,
-                "link_data": link_data,
-                "url": link_data.get("url"),
-                "is_active": link.get("is_active", True),
-                "domain_id": link.get("domain_id"),
-                "generate_qr": link.get("generate_qr", False),
-                "password": link.get("password"),
-                "title": link.get("title"),
-                "description": link.get("description"),
-                "tags": link.get("tags"),
-            }
-            link_obj = LinkCreate(**{k: v for k, v in link_payload.items() if v is not None})
-            link_service = LinkService(db)
-            db_link = link_service.create_link(link_data=link_obj, user_id=current_user.id)
-            return db_link
-        # Otherwise, use the existing logic
-        link_obj = LinkCreate(**link)
         link_service = LinkService(db)
-        db_link = link_service.create_link(link_data=link_obj, user_id=current_user.id)
-        return db_link
+        db_link = link_service.create_link(link_data=link, user_id=current_user.id)
+        return schemas.Link.from_db_model(db_link)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,8 +89,8 @@ def read_links_endpoint(
         
         # For now, we'll just return all links
         # In a real app, you'd want to filter by the current user's permissions
-        links = crud_link.get_all_links(db, skip=skip, limit=min(limit, 100))
-        return links
+        db_links = crud_link.get_all_links(db, skip=skip, limit=min(limit, 100))
+        return [schemas.Link.from_db_model(link) for link in db_links]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -166,7 +116,7 @@ def read_link_endpoint(
         )
     
     # In a real app, you'd check if the current user has permission to view this link
-    return db_link
+    return schemas.Link.from_db_model(db_link)
 
 @router.put("/{link_id}", response_model=schemas.Link)
 def update_link_endpoint(
@@ -195,7 +145,7 @@ def update_link_endpoint(
                 detail="Link not found",
             )
             
-        return updated_link
+        return schemas.Link.from_db_model(updated_link)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -228,7 +178,7 @@ def delete_link_endpoint(
     # In a real app, you'd check if the current user has permission to delete this link
     try:
         deleted_link = crud_link.delete_link(db=db, link_id=link_id)
-        return deleted_link
+        return schemas.Link.from_db_model(deleted_link)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -197,8 +197,96 @@ Authorization: Bearer your-jwt-token
 - `POST /api/v1/auth/refresh` - Refresh access token
 
 #### Links
+
+The Link API supports both minimal and advanced usage patterns. Start simple and add features as needed.
+
+**1. Minimal Request (Just URL)**
+```http
+POST /api/v1/links/
+Content-Type: application/json
+Authorization: Bearer your-jwt-token
+
+{
+  "url": "https://example.com/very/long/url"
+}
+```
+
+**2. With Custom Short Code**
+```http
+POST /api/v1/links/
+Content-Type: application/json
+Authorization: Bearer your-jwt-token
+
+{
+  "url": "https://example.com/very/long/url",
+  "short_code": "mylink"
+}
+```
+
+**3. With Title and Description**
+```http
+POST /api/v1/links/
+Content-Type: application/json
+Authorization: Bearer your-jwt-token
+
+{
+  "url": "https://example.com/very/long/url",
+  "title": "My Example Link",
+  "description": "This is an example link for testing"
+}
+```
+
+**4. Advanced Usage (Custom Domain, Pixels, Tags)**
+```http
+POST /api/v1/links/
+Content-Type: application/json
+Authorization: Bearer your-jwt-token
+
+{
+  "url": "https://example.com/marketing/campaign",
+  "space_id": "123e4567-e89b-12d3-a456-426614174000",
+  "domain_id": "short.ly",
+  "short_code": "campaign2024",
+  "title": "Marketing Campaign 2024",
+  "description": "Main landing page for our 2024 marketing campaign",
+  "tags": ["marketing", "campaign", "2024"],
+  "password": "secret123",
+  "pixel_ids": [
+    "123e4567-e89b-12d3-a456-426614174001",
+    "123e4567-e89b-12d3-a456-426614174002"
+  ],
+  "expires_at": "2024-12-31T23:59:59"
+}
+```
+
+**Response (All Examples)**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "space_id": "123e4567-e89b-12d3-a456-426614174001",
+  "short_code": "abc123",
+  "url": "https://example.com/very/long/url",
+  "title": "My Example Link",
+  "short_url": "http://localhost:8000/abc123",
+  "is_active": true,
+  "created_at": "2023-05-15T10:30:45.123456"
+}
+```
+
+**Field Descriptions**
+- `url` (required): The destination URL to redirect to
+- `space_id` (optional): Space ID for organization
+- `domain_id` (optional): Custom domain name (must be verified)
+- `short_code` (optional): Custom short code (auto-generated if not provided)
+- `title` (optional): Human-readable title for the link
+- `description` (optional): Longer description for the link
+- `tags` (optional): Array of tags for categorization
+- `password` (optional): Password protection for the link
+- `pixel_ids` (optional): Array of pixel IDs for tracking
+- `expires_at` (optional): ISO datetime when link expires
+
+**Other Endpoints**
 - `GET /api/v1/links` - List all links (paginated)
-- `POST /api/v1/links` - Create a new link
 - `GET /api/v1/links/{link_id}` - Get link details
 - `PUT /api/v1/links/{link_id}` - Update a link
 - `DELETE /api/v1/links/{link_id}` - Delete a link

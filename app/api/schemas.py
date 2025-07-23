@@ -125,8 +125,8 @@ class User(UserInDBBase):
 # Domain Schemas
 class DomainBase(BaseModel):
     domain: constr(strip_whitespace=True, to_lower=True, min_length=1, max_length=253)
-    is_active: Optional[bool] = True
     space_id: UUID4
+    is_active: Optional[bool] = True
     verified: Optional[bool] = False
     
     @field_validator('domain')
@@ -140,12 +140,36 @@ class DomainBase(BaseModel):
             raise ValueError("Invalid domain format")
         return sanitized
 
-class DomainCreate(DomainBase):
-    pass
+class DomainCreate(BaseModel):
+    domain: constr(strip_whitespace=True, to_lower=True, min_length=1, max_length=253)
+    space_id: UUID4
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain(cls, v):
+        sanitized = sanitize_string(v)
+        if not sanitized or not re.match(
+            r'^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$',
+            sanitized
+        ):
+            raise ValueError("Invalid domain format")
+        return sanitized
 
 class DomainUpdate(BaseModel):
-    is_active: Optional[bool] = None
-    verified: Optional[bool] = None
+    domain: Optional[constr(strip_whitespace=True, to_lower=True, min_length=1, max_length=253)] = None
+
+    @field_validator('domain')
+    @classmethod
+    def validate_domain(cls, v):
+        if v is None:
+            return v
+        sanitized = sanitize_string(v)
+        if not sanitized or not re.match(
+            r'^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$',
+            sanitized
+        ):
+            raise ValueError("Invalid domain format")
+        return sanitized
 
 class DomainInDBBase(DomainBase):
     created_at: datetime
@@ -159,29 +183,38 @@ class Domain(DomainInDBBase):
 
 
 # Link Schemas
-class LinkBase(BaseModel):
-    space_id: UUID4
-    domain_id: Optional[constr(max_length=253)] = None
-    short_code: constr(
-        strip_whitespace=True,
-        min_length=1,
-        max_length=100,
-        pattern=r'^[a-zA-Z0-9_-]+$',
-        to_lower=True  # Convert to lowercase for consistency
-    )
-    is_active: Optional[bool] = True
-    link_data: dict
+class LinkCreate(BaseModel):
+    """Schema for creating a new shortened link - supports both minimal and advanced usage."""
+    url: str = Field(..., description="The destination URL to redirect to")
+    space_id: Optional[UUID4] = Field(None, description="Space ID (optional)")
+    domain_id: Optional[str] = Field(None, description="Custom domain (optional)")
+    short_code: Optional[str] = Field(None, description="Custom short code (optional, auto-generated if not provided)")
+    title: Optional[str] = Field(None, max_length=200, description="Optional title for the link")
+    description: Optional[str] = Field(None, max_length=500, description="Optional description")
+    tags: Optional[List[str]] = Field(None, description="Optional tags for organization")
+    password: Optional[str] = Field(None, description="Optional password protection")
+    pixel_ids: Optional[List[UUID4]] = Field(None, description="List of pixel IDs to associate with this link")
+    expires_at: Optional[datetime] = Field(None, description="Optional expiration date")
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v):
+        if not v or not v.strip():
+            raise ValueError("URL cannot be empty")
+        # Basic URL validation
+        if not (v.startswith('http://') or v.startswith('https://')):
+            raise ValueError("URL must start with http:// or https://")
+        return v.strip()
     
     @field_validator('short_code')
     @classmethod
     def validate_short_code(cls, v):
+        if v is None:
+            return v
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
-            raise ValidationException(
-                "Invalid short code format",
-                details={"short_code": "Can only contain letters, numbers, hyphens, and underscores"}
-            )
-        return v.lower()  # Ensure consistent case
-
+            raise ValueError("Short code can only contain letters, numbers, hyphens, and underscores")
+        return v.lower()
+    
     @field_validator('domain_id')
     @classmethod
     def validate_domain_id(cls, v):
@@ -191,115 +224,111 @@ class LinkBase(BaseModel):
         if not sanitized:
             raise ValueError("Invalid characters in domain_id")
         return sanitized
-
-class LinkCreate(LinkBase):
-    """Schema for creating a new shortened link."""
-    url: str  # The destination URL to redirect to
-    password: Optional[str] = None  # Optional password for the link
-    title: Optional[str] = None  # Optional title for the link
-    description: Optional[str] = None  # Optional description
-    tags: Optional[List[str]] = None  # Optional tags for organization
-    generate_qr: bool = False  # Whether to generate a QR code for this link
-    pixel_ids: Optional[List[UUID]] = None  # List of pixel IDs to associate
     
     class Config:
         schema_extra = {
-            "example": {
-                "space_id": "123e4567-e89b-12d3-a456-426614174000",
-                "domain_id": "example.com",
-                "short_code": "mylink",
-                "is_active": True,
-                "url": "https://example.com/long/url/to/be/shortened",
-                "password": "optional-password",
-                "title": "My Short Link",
-                "description": "A description of where this link points to",
-                "tags": ["marketing", "social"],
-                "generate_qr": False,
-                "pixel_ids": ["123e4567-e89b-12d3-a456-426614174001", "123e4567-e89b-12d3-a456-426614174002"]
+            "examples": {
+                "minimal": {
+                    "summary": "Minimal request",
+                    "description": "Just the URL - everything else is optional",
+                    "value": {
+                        "url": "https://example.com/very/long/url"
+                    }
+                },
+                "with_custom_code": {
+                    "summary": "With custom short code",
+                    "description": "URL with a custom short code",
+                    "value": {
+                        "url": "https://example.com/very/long/url",
+                        "short_code": "mylink"
+                    }
+                },
+                "with_title": {
+                    "summary": "With title and description",
+                    "description": "URL with metadata",
+                    "value": {
+                        "url": "https://example.com/very/long/url",
+                        "title": "My Example Link",
+                        "description": "This is an example link for testing"
+                    }
+                },
+                "advanced": {
+                    "summary": "Advanced usage",
+                    "description": "Using custom domain, pixels, and other advanced features",
+                    "value": {
+                        "url": "https://example.com/very/long/url",
+                        "space_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "domain_id": "short.ly",
+                        "short_code": "campaign2024",
+                        "title": "Marketing Campaign 2024",
+                        "description": "Main landing page for our 2024 marketing campaign",
+                        "tags": ["marketing", "campaign", "2024"],
+                        "password": "secret123",
+                        "pixel_ids": ["123e4567-e89b-12d3-a456-426614174001", "123e4567-e89b-12d3-a456-426614174002"]
+                    }
+                }
             }
         }
 
 class LinkUpdate(BaseModel):
+    """Schema for updating a link."""
+    url: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=200)
     is_active: Optional[bool] = None
-    link_data: Optional[dict] = None
-    pixel_ids: Optional[List[UUID]] = None
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v):
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("URL cannot be empty")
+        if not (v.startswith('http://') or v.startswith('https://')):
+            raise ValueError("URL must start with http:// or https://")
+        return v.strip()
 
-class LinkInDBBase(LinkBase):
+class Link(BaseModel):
+    """Schema for a link response - simplified for easy testing."""
     id: UUID4
+    space_id: UUID4
+    short_code: str
+    url: str = Field(..., description="The original URL")
+    title: Optional[str] = None
+    short_url: str = Field(..., description="The full short URL")
+    is_active: bool = True
     created_at: datetime
-    pixel_ids: Optional[List[UUID]] = None
-
-    class Config:
-        orm_mode = True
-
-class Link(LinkInDBBase):
-    """Schema for a link response, including the QR code if available."""
-    qr_code: Optional[str] = Field(
-        None, 
-        description="Base64-encoded QR code image (PNG) if available"
-    )
-    short_url: Optional[str] = Field(
-        None,
-        description="The full short URL that redirects to the original URL"
-    )
-    original_url: Optional[str] = Field(
-        None,
-        description="The original URL that this short link points to"
-    )
-    title: Optional[str] = Field(
-        None,
-        description="Optional title for the link"
-    )
-    description: Optional[str] = Field(
-        None,
-        description="Optional description for the link"
-    )
-    tags: List[str] = Field(
-        default_factory=list,
-        description="List of tags for categorizing the link"
-    )
-    click_count: int = Field(
-        0,
-        description="Number of times this link has been clicked"
-    )
-    has_password: bool = Field(
-        False,
-        description="Whether the link is password protected"
-    )
-    pixels: Optional[List["Pixel"]] = None
+    
+    @classmethod
+    def from_db_model(cls, db_link):
+        """Convert database model to response schema."""
+        from app.core.config import settings
+        
+        # Extract URL and title from link_data
+        url = db_link.link_data.get('url', '')
+        title = db_link.link_data.get('title')
+        
+        # Build short URL
+        if db_link.domain_id:
+            short_url = f"https://{db_link.domain_id}/{db_link.short_code}"
+        else:
+            short_url = f"{settings.DEFAULT_DOMAIN}/{db_link.short_code}"
+        
+        return cls(
+            id=db_link.id,
+            space_id=db_link.space_id,
+            short_code=db_link.short_code,
+            url=url,
+            title=title,
+            short_url=short_url,
+            is_active=db_link.is_active,
+            created_at=db_link.created_at
+        )
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         json_encoders = {
             'datetime': lambda v: v.isoformat() if v else None
         }
-        
-    @classmethod
-    def from_orm(cls, obj):
-        """Override to handle custom field mapping from ORM."""
-        # Get the base ORM data
-        data = super().from_orm(obj)
-        
-        # Add link_data fields to the root of the response
-        if hasattr(obj, 'link_data') and obj.link_data:
-            data.original_url = obj.link_data.get('url')
-            data.title = obj.link_data.get('title')
-            data.description = obj.link_data.get('description')
-            data.tags = obj.link_data.get('tags', [])
-            data.click_count = obj.link_data.get('clicks', 0)
-            data.has_password = bool(obj.link_data.get('password'))
-            
-            # Only include QR code if it exists
-            if 'qr_code' in obj.link_data:
-                data.qr_code = obj.link_data['qr_code']
-        
-        # Set the short URL
-        if hasattr(obj, 'domain_id') and obj.domain_id:
-            data.short_url = f"https://{obj.domain_id}/{obj.short_code}"
-        else:
-            data.short_url = f"{settings.DEFAULT_DOMAIN}/{obj.short_code}"
-            
-        return data
 
 
 # Event Schemas

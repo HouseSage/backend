@@ -84,40 +84,43 @@ def get_all_links(db: Session, skip: int = 0, limit: int = 100) -> list[models.L
     return db.query(models.Link).offset(skip).limit(limit).all()
 
 # Creates a new link
-def create_link(db: Session, link: schemas.LinkCreate) -> models.Link:
+def create_link(db: Session, link: schemas.LinkCreate, space_id: UUID) -> models.Link:
     """
     Create a new shortened link with the provided data.
     
     Args:
         db: Database session
         link: Link creation data
+        space_id: Space ID for the link
         
     Returns:
         The created Link object
     """
-    # Prepare link data dictionary
+    # Prepare link data dictionary - supports both minimal and advanced usage
     link_data = {
         "url": link.url,
         "title": link.title,
         "description": link.description,
         "tags": link.tags or [],
         "password": link.password,
+        "expires_at": link.expires_at.isoformat() if link.expires_at else None,
         "created_at": datetime.utcnow().isoformat(),
-        "clicks": 0,
-        "is_active": link.is_active if link.is_active is not None else True
+        "clicks": 0
     }
     
     # Create the database record
     db_link = models.Link(
-        space_id=link.space_id,
-        domain_id=link.domain_id,
+        space_id=space_id,
+        domain_id=link.domain_id,  # Now supports custom domains
         short_code=link.short_code,
-        is_active=link.is_active if link.is_active is not None else True,
+        is_active=True,
         link_data=link_data
     )
-    # Handle pixel association
-    if getattr(link, 'pixel_ids', None):
+    
+    # Handle pixel association if provided
+    if link.pixel_ids:
         db_link.pixels = db.query(models.Pixel).filter(models.Pixel.id.in_(link.pixel_ids)).all()
+    
     db.add(db_link)
     db.commit()
     db.refresh(db_link)
@@ -126,7 +129,7 @@ def create_link(db: Session, link: schemas.LinkCreate) -> models.Link:
 # Updates link details
 def update_link(db: Session, db_link: models.Link, link_in: schemas.LinkUpdate) -> models.Link:
     """
-    Update an existing link with new data.
+    Update an existing link with new data - simplified version.
     
     Args:
         db: Database session
@@ -142,21 +145,12 @@ def update_link(db: Session, db_link: models.Link, link_in: schemas.LinkUpdate) 
     if "is_active" in update_data and update_data["is_active"] is not None:
         db_link.is_active = update_data["is_active"]
     
-    # Update link data fields
+    # Update link data fields - simplified
     if "url" in update_data:
         db_link.link_data["url"] = update_data["url"]
     if "title" in update_data:
         db_link.link_data["title"] = update_data["title"]
-    if "description" in update_data:
-        db_link.link_data["description"] = update_data["description"]
-    if "tags" in update_data:
-        db_link.link_data["tags"] = update_data["tags"]
-    if "password" in update_data:
-        db_link.link_data["password"] = update_data["password"]
     
-    # Update pixel association
-    if 'pixel_ids' in update_data and update_data['pixel_ids'] is not None:
-        db_link.pixels = db.query(models.Pixel).filter(models.Pixel.id.in_(update_data['pixel_ids'])).all()
     db.add(db_link)
     db.commit()
     db.refresh(db_link)

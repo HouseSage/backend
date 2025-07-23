@@ -110,13 +110,24 @@ def register_exception_handlers(app):
     
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc: RequestValidationError):
+        # Convert error objects to JSON-serializable format
+        errors = []
+        for error in exc.errors():
+            serializable_error = {
+                "field": ".".join(str(x) for x in error.get("loc", [])),
+                "message": str(error.get("msg", "")),
+                "type": error.get("type", ""),
+                "input": str(error.get("input", "")) if error.get("input") is not None else None
+            }
+            errors.append(serializable_error)
+        
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "error": {
                     "code": "validation_error",
                     "message": "Validation Error",
-                    "details": exc.errors()
+                    "details": errors
                 }
             }
         )
