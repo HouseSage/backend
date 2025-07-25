@@ -92,7 +92,13 @@ def delete_space_endpoint(
     check_space_owner(db, space_id=space_id, user_id=current_user.id)
     
     if current_user.default_space_id == space_id:
-         pass
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your default space. Please change your default space before deleting.")
+
+    # Remove all users from the space to avoid foreign key constraint errors
+    space_users = crud_space.get_space_users_with_roles(db, space_id=space_id)
+    for su in space_users:
+        db.delete(su)
+    db.commit()
 
     crud_space.delete_space(db, space_id=space_id)
     return None
