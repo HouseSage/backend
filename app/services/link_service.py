@@ -10,7 +10,7 @@ import base64
 from sqlalchemy.orm import Session
 
 from app.models import models
-from app.crud import crud_link, crud_domain
+from app.crud import crud_link, crud_domain, crud_user
 from app.core.short_code import generate_short_code, is_valid_short_code, generate_unique_short_code
 from app.core.link_utils import LinkEncoder
 # QR code generation is now handled in the frontend
@@ -38,9 +38,18 @@ class LinkService:
         Raises:
             ValueError: If the short code is invalid or already in use
         """
-        # Get user's default space (simplified - assume user has a default space)
-        # In a real app, you'd get this from the user record or require space_id in request
-        space_id = link_data.space_id or user_id  # Use user_id as space_id for simplicity
+        # Get user's default space if no space_id is provided
+        if not link_data.space_id:
+            user = crud_user.get_user(self.db, user_id)
+            if not user:
+                raise ValueError("User not found")
+            
+            if not user.default_space_id:
+                raise ValueError("User has no default space. Please create a space first or specify a space_id.")
+            
+            space_id = user.default_space_id
+        else:
+            space_id = link_data.space_id
         
         # Validate short code if provided
         if link_data.short_code:
