@@ -39,7 +39,9 @@ def create_domain_endpoint(
     from app.api.spaces import check_space_membership
     check_space_membership(db, space_id=domain_in.space_id, user_id=current_user.id)
     
-    return crud_domain.create_domain(db=db, domain=domain_in)
+    # Convert schema to dict for CRUD layer
+    domain_dict = domain_in.model_dump()
+    return crud_domain.create_domain(db=db, domain=domain_dict)
 
 @router.get("/", response_model=List[schemas.Domain])
 def read_domains_endpoint(
@@ -73,32 +75,13 @@ def read_domain_endpoint(
     if db_domain is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Domain not found")
     
-    # Verify user has access to the space that owns this domain
-    from app.api.spaces import check_space_membership
-    check_space_membership(db, space_id=db_domain.space_id, user_id=current_user.id)
-    
-    return db_domain
-
-@router.put("/{domain_name}", response_model=schemas.Domain)
-def update_domain_endpoint(
-    domain_name: str, 
-    domain_in: schemas.DomainUpdate, 
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_active_user)
-) -> Any:
-    db_domain = crud_domain.get_domain(db, domain_name=domain_name)
-    if not db_domain:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Domain not found",
-        )
-    
     # Verify user has admin/owner access to the space that owns this domain
     from app.api.spaces import check_space_admin_or_owner
     check_space_admin_or_owner(db, space_id=db_domain.space_id, user_id=current_user.id)
     
-    updated_domain = crud_domain.update_domain(db=db, db_domain=db_domain, domain_in=domain_in)
-    return updated_domain
+    return db_domain
+
+
 
 @router.delete("/{domain_name}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_domain_endpoint(

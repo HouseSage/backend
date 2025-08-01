@@ -1,8 +1,8 @@
 from uuid import UUID
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.models import models
-from app.api import schemas
 
 # Returns an event by its UUID
 def get_event(db: Session, event_id: UUID) -> models.Event | None:
@@ -36,8 +36,29 @@ def get_all_events(
         .all()
     )
 
+# Returns the click count for a specific link
+def get_link_click_count(db: Session, link_id: UUID) -> int:
+    """
+    Get the total number of click events for a specific link.
+    
+    Args:
+        db: Database session
+        link_id: The UUID of the link
+        
+    Returns:
+        The total number of click events
+    """
+    return (
+        db.query(models.Event)
+        .filter(
+            models.Event.link_id == link_id,
+            models.Event.type == "CLICK"
+        )
+        .count()
+    )
+
 # Creates a new event
-def create_event(db: Session, event: schemas.EventCreate) -> models.Event:
+def create_event(db: Session, event: Dict[str, Any]) -> models.Event:
     
     db_event = models.Event(
         link_id=event.link_id,

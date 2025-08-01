@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     model_config = {
         "case_sensitive": True,
         "extra": "allow",
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
     }
     
     # Initializes settings and sets DATABASE_URL if not provided

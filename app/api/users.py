@@ -31,11 +31,13 @@ def create_user_endpoint(user: schemas.UserCreate, db: Session = Depends(get_db)
             detail="Email already registered",
         )
     # Create the user
-    new_user = crud_user.create_user(db=db, user=user)
+    user_dict = user.model_dump()
+    new_user = crud_user.create_user(db=db, user=user_dict)
     # Create a default space for the user
     from app.api.schemas import SpaceCreate
     space_in = SpaceCreate(name=f"{new_user.email.split('@')[0]}'s Space", description="Default space")
-    default_space = crud_space.create_space_with_owner(db=db, space_in=space_in, owner_id=new_user.id)
+    space_dict = space_in.model_dump()
+    default_space = crud_space.create_space_with_owner(db=db, space_in=space_dict, owner_id=new_user.id)
     # Set the user's default_space_id
     new_user.default_space_id = default_space.id
     db.add(new_user)

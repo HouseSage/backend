@@ -1,8 +1,8 @@
 import re
-from pydantic import BaseModel, UUID4, EmailStr, Field, ConfigDict, field_validator, constr
+from pydantic import BaseModel, UUID4, EmailStr, Field, ConfigDict, field_validator, model_validator, constr
 from pydantic_core import PydanticCustomError
 from app.core.exceptions import ValidationException
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
@@ -155,21 +155,7 @@ class DomainCreate(BaseModel):
             raise ValueError("Invalid domain format")
         return sanitized
 
-class DomainUpdate(BaseModel):
-    domain: Optional[constr(strip_whitespace=True, to_lower=True, min_length=1, max_length=253)] = None
 
-    @field_validator('domain')
-    @classmethod
-    def validate_domain(cls, v):
-        if v is None:
-            return v
-        sanitized = sanitize_string(v)
-        if not sanitized or not re.match(
-            r'^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$',
-            sanitized
-        ):
-            raise ValueError("Invalid domain format")
-        return sanitized
 
 class DomainInDBBase(DomainBase):
     created_at: datetime
@@ -182,29 +168,92 @@ class Domain(DomainInDBBase):
     pass
 
 
-# Link Schemas
-class LinkCreate(BaseModel):
-    """Schema for creating a new shortened link - supports both minimal and advanced usage."""
-    url: str = Field(..., description="The destination URL to redirect to")
-    space_id: Optional[UUID4] = Field(None, description="Space ID (optional)")
-    domain_id: Optional[str] = Field(None, description="Custom domain (optional)")
-    short_code: Optional[str] = Field(None, description="Custom short code (optional, auto-generated if not provided)")
-    title: Optional[str] = Field(None, max_length=200, description="Optional title for the link")
-    description: Optional[str] = Field(None, max_length=500, description="Optional description")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for organization")
+# Link Schemas - Generic Link System
+class LinkDataBase(BaseModel):
+    """Base schema for link data - all link types inherit from this."""
+    track: bool = Field(True, description="Whether to track events for this link")
     password: Optional[str] = Field(None, description="Optional password protection")
-    pixel_ids: Optional[List[UUID4]] = Field(None, description="List of pixel IDs to associate with this link")
     expires_at: Optional[datetime] = Field(None, description="Optional expiration date")
+
+class SimpleLinkData(LinkDataBase):
+    """Data for simple redirect links."""
+    type: Literal["simple"] = Field(default="simple", description="Link type")
+    url: str = Field(..., description="The destination URL to redirect to")
     
     @field_validator('url')
     @classmethod
     def validate_url(cls, v):
         if not v or not v.strip():
             raise ValueError("URL cannot be empty")
-        # Basic URL validation
         if not (v.startswith('http://') or v.startswith('https://')):
             raise ValueError("URL must start with http:// or https://")
         return v.strip()
+
+class RoundRobinLinkData(LinkDataBase):
+    """Data for round-robin redirect links."""
+    type: Literal["round_robin"] = Field(default="round_robin", description="Link type")
+    urls: List[str] = Field(..., min_length=1, description="List of URLs to rotate through")
+    
+    @field_validator('urls')
+    @classmethod
+    def validate_urls(cls, v):
+        if not v:
+            raise ValueError("URLs list cannot be empty")
+        for url in v:
+            if not url or not url.strip():
+                raise ValueError("URL cannot be empty")
+            if not (url.startswith('http://') or url.startswith('https://')):
+                raise ValueError("All URLs must start with http:// or https://")
+        return v
+
+class ComplexLinkData(LinkDataBase):
+    """Data for complex redirect links with rules."""
+    type: Literal["complex"] = Field(default="complex", description="Link type")
+    rules: Dict[str, Any] = Field(..., description="Redirect rules (android -> urlA, iphone -> urlB, else -> urlC)")
+
+class LinkCreate(BaseModel):
+    """Schema for creating a new shortened link - Generic Link System."""
+    # Core fields
+    space_id: Optional[UUID4] = Field(None, description="Space ID (optional - use default if not provided)")
+    domain_id: str = Field(default="3c47a249.test", description="Domain name (defaults to verified domain if not provided)")
+    short_code: Optional[str] = Field(None, description="Custom short code (optional, auto-generated if not provided)")
+    
+    # Metadata fields
+    title: Optional[str] = Field(None, max_length=200, description="Optional title for the link")
+    description: Optional[str] = Field(None, max_length=500, description="Optional description")
+    tags: Optional[List[str]] = Field(None, description="Optional tags for organization")
+    pixel_ids: Optional[List[UUID4]] = Field(None, description="List of pixel IDs to associate with this link")
+    
+    # Generic data field - contains all redirect logic
+    data: Optional[Union[SimpleLinkData, RoundRobinLinkData, ComplexLinkData]] = Field(
+        None, 
+        discriminator='type',
+        description="Link data containing type-specific redirect logic"
+    )
+    
+    # Backward compatibility field
+    url: Optional[str] = Field(None, description="Legacy URL field for backward compatibility")
+    
+    @model_validator(mode='before')
+    @classmethod
+    def handle_backward_compatibility(cls, values):
+        """Handle backward compatibility with old link format and set defaults."""
+        if isinstance(values, dict):
+            # If data field is missing but url field is present, convert to simple link format
+            if 'data' not in values and 'url' in values:
+                values['data'] = {
+                    'type': 'simple',
+                    'url': values['url']
+                }
+                
+        return values
+    
+    @model_validator(mode='after')
+    def validate_data_field(self):
+        """Ensure data field is present after backward compatibility conversion."""
+        if not self.data:
+            raise ValueError("Link data is required")
+        return self
     
     @field_validator('short_code')
     @classmethod
@@ -223,105 +272,151 @@ class LinkCreate(BaseModel):
         sanitized = sanitize_string(v)
         if not sanitized:
             raise ValueError("Invalid characters in domain_id")
-        return sanitized
+        return sanitized  # This was missing!
     
     class Config:
         schema_extra = {
             "examples": {
-                "minimal": {
-                    "summary": "Minimal request",
-                    "description": "Just the URL - everything else is optional",
+                "simple": {
+                    "summary": "Simple link",
+                    "description": "Basic redirect link - matches your image example",
                     "value": {
-                        "url": "https://example.com/very/long/url"
-                    }
-                },
-                "with_custom_code": {
-                    "summary": "With custom short code",
-                    "description": "URL with a custom short code",
-                    "value": {
-                        "url": "https://example.com/very/long/url",
-                        "short_code": "mylink"
-                    }
-                },
-                "with_title": {
-                    "summary": "With title and description",
-                    "description": "URL with metadata",
-                    "value": {
-                        "url": "https://example.com/very/long/url",
+                        "domain_id": "qill.me",
+                        "short_code": "hello",
                         "title": "My Example Link",
-                        "description": "This is an example link for testing"
+                        "description": "This is an example link",
+                        "data": {
+                            "type": "simple",
+                            "url": "https://example.com/very/long/url",
+                            "track": True,
+                            "password": None,
+                            "expires_at": None
+                        }
                     }
                 },
-                "advanced": {
-                    "summary": "Advanced usage",
-                    "description": "Using custom domain, pixels, and other advanced features",
+                "password_protected": {
+                    "summary": "Password protected link",
+                    "description": "Simple link with password protection",
                     "value": {
-                        "url": "https://example.com/very/long/url",
-                        "space_id": "123e4567-e89b-12d3-a456-426614174000",
-                        "domain_id": "short.ly",
-                        "short_code": "campaign2024",
-                        "title": "Marketing Campaign 2024",
-                        "description": "Main landing page for our 2024 marketing campaign",
-                        "tags": ["marketing", "campaign", "2024"],
-                        "password": "secret123",
-                        "pixel_ids": ["123e4567-e89b-12d3-a456-426614174001", "123e4567-e89b-12d3-a456-426614174002"]
+                        "domain_id": "qill.me",
+                        "short_code": "secret",
+                        "title": "Protected Content",
+                        "data": {
+                            "type": "simple",
+                            "url": "https://example.com/secret-content",
+                            "track": True,
+                            "password": "secret123",
+                            "expires_at": "2024-12-31T23:59:59"
+                        }
+                    }
+                },
+                "round_robin": {
+                    "summary": "Round robin link",
+                    "description": "Link that rotates through multiple URLs",
+                    "value": {
+                        "domain_id": "qill.me",
+                        "short_code": "rotate",
+                        "title": "Load Balanced Link",
+                        "data": {
+                            "type": "round_robin",
+                            "urls": [
+                                "https://server1.example.com/app",
+                                "https://server2.example.com/app",
+                                "https://server3.example.com/app"
+                            ],
+                            "track": True
+                        }
+                    }
+                },
+                "complex_rules": {
+                    "summary": "Complex redirect rules",
+                    "description": "Link with device/geo-based redirect rules",
+                    "value": {
+                        "domain_id": "qill.me",
+                        "short_code": "smart",
+                        "title": "Smart Redirect",
+                        "data": {
+                            "type": "complex",
+                            "rules": {
+                                "android": "https://play.google.com/store/apps/details?id=com.example.app",
+                                "iphone": "https://apps.apple.com/us/app/example-app/id123456789",
+                                "else": "https://example.com/download"
+                            },
+                            "track": True
+                        }
                     }
                 }
             }
         }
 
 class LinkUpdate(BaseModel):
-    """Schema for updating a link."""
-    url: Optional[str] = None
+    """Schema for updating a link - supports updating the generic data field."""
     title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=500)
+    tags: Optional[List[str]] = Field(None, max_items=10)
     is_active: Optional[bool] = None
-    
-    @field_validator('url')
-    @classmethod
-    def validate_url(cls, v):
-        if v is None:
-            return v
-        if not v.strip():
-            raise ValueError("URL cannot be empty")
-        if not (v.startswith('http://') or v.startswith('https://')):
-            raise ValueError("URL must start with http:// or https://")
-        return v.strip()
+    data: Optional[Union[SimpleLinkData, RoundRobinLinkData, ComplexLinkData]] = Field(
+        None,
+        discriminator='type',
+        description="Updated link data - if provided, replaces the existing data"
+    )
 
 class Link(BaseModel):
-    """Schema for a link response - simplified for easy testing."""
+    """Schema for a link response - Generic Link System."""
     id: UUID4
     space_id: UUID4
+    domain_id: Optional[str] = None  # Make optional for backward compatibility
     short_code: str
-    url: str = Field(..., description="The original URL")
     title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
     short_url: str = Field(..., description="The full short URL")
     is_active: bool = True
     created_at: datetime
+    data: Dict[str, Any] = Field(..., description="Link data containing type-specific redirect logic")
     
     @classmethod
     def from_db_model(cls, db_link):
         """Convert database model to response schema."""
         from app.core.config import settings
         
-        # Extract URL and title from link_data
-        url = db_link.link_data.get('url', '')
-        title = db_link.link_data.get('title')
+        # Extract metadata from link_data (maintaining backward compatibility)
+        link_data = db_link.link_data or {}
+        title = link_data.get('title')
+        description = link_data.get('description')
+        tags = link_data.get('tags', [])
         
         # Build short URL
         if db_link.domain_id:
             short_url = f"https://{db_link.domain_id}/{db_link.short_code}"
         else:
-            short_url = f"{settings.DEFAULT_DOMAIN}/{db_link.short_code}"
+            short_url = f"https://{settings.DEFAULT_DOMAIN}/{db_link.short_code}"
+        
+        # Extract the data field - this contains the type-specific redirect logic
+        # For backward compatibility, if data doesn't have type, assume simple
+        data = link_data.copy()
+        if 'type' not in data and 'url' in data:
+            # Convert old format to new format
+            data = {
+                'type': 'simple',
+                'url': data.get('url'),
+                'track': True,  # Default to tracking enabled
+                'password': data.get('password'),
+                'expires_at': data.get('expires_at')
+            }
         
         return cls(
             id=db_link.id,
             space_id=db_link.space_id,
+            domain_id=db_link.domain_id,
             short_code=db_link.short_code,
-            url=url,
             title=title,
+            description=description,
+            tags=tags,
             short_url=short_url,
             is_active=db_link.is_active,
-            created_at=db_link.created_at
+            created_at=db_link.created_at,
+            data=data
         )
     
     class Config:

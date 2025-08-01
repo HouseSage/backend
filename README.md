@@ -21,17 +21,19 @@
 
 ### Core Features
 
-- **URL Shortening**: Convert long URLs into short, shareable links
+- **Generic Link System**: Unified architecture supporting multiple link types with type-based routing
+- **Type-Based Processing**: Simple, round-robin, and complex link types with LinkProcessor engine
 - **Custom Short Codes**: Create memorable custom short codes
-- **Link Management**: Full CRUD operations for managing links
+- **Link Management**: Full CRUD operations with schema-driven validation
 - **Password Protection**: Secure sensitive links with passwords
-- **Analytics Dashboard**: Track clicks, referrers, and geographic data
-- **Custom Domains**: Support for custom domain mapping
-- **API-First Design**: Fully documented RESTful API with OpenAPI/Swagger
+- **Analytics Dashboard**: Track clicks, referrers, and geographic data with optional per-link control
+- **Custom Domains**: Mandatory custom domain mapping for branded links
+- **API-First Design**: Fully documented RESTful API with discriminated union schemas
 - **User Authentication**: JWT-based authentication system
 - **Rate Limiting**: Protect against abuse with configurable rate limits
-- **Bulk Operations**: Import/export links in various formats
+- **No API Divergence**: Schema-driven design prevents API/database inconsistencies
 - **Link Expiration**: Set expiration dates for temporary links
+- **Backward Compatibility**: Legacy LinkEncoder preserved for existing links
 
 ## 🛠️ Tech Stack
 
@@ -176,7 +178,124 @@ pytest tests/test_links.py -v
 pytest --cov=app --cov-report=html
 ```
 
-## 📚 API Reference
+## � Generic Link System
+
+The backend features a modern Generic Link System that supports multiple link types through discriminated union schemas and type-based processing.
+
+### Architecture Overview
+
+The system uses a unified `data` field that stores type-specific configurations, eliminating API/schema divergence and enabling flexible link behavior.
+
+### Supported Link Types
+
+#### 1. Simple Links
+Standard one-to-one URL redirection:
+
+```json
+{
+  "url": "https://example.com",
+  "data": {
+    "type": "simple",
+    "target_url": "https://example.com"
+  },
+  "track": true
+}
+```
+
+#### 2. Round Robin Links
+Distribute traffic across multiple URLs:
+
+```json
+{
+  "url": "https://example.com",
+  "data": {
+    "type": "round_robin",
+    "urls": [
+      "https://example1.com",
+      "https://example2.com",
+      "https://example3.com"
+    ],
+    "current_index": 0
+  },
+  "track": false
+}
+```
+
+#### 3. Complex Links
+Advanced routing with device/geo-based rules:
+
+```json
+{
+  "url": "https://example.com",
+  "data": {
+    "type": "complex",
+    "rules": [
+      {
+        "condition": {"device": "mobile"},
+        "target_url": "https://mobile.example.com"
+      },
+      {
+        "condition": {"country": "US"},
+        "target_url": "https://us.example.com"
+      }
+    ],
+    "default_url": "https://default.example.com"
+  },
+  "track": true
+}
+```
+
+### Key Features
+
+- **Type Safety**: Discriminated unions ensure proper validation for each link type
+- **LinkProcessor Engine**: Modern processing system replacing legacy LinkEncoder
+- **Backward Compatibility**: Existing links continue to work seamlessly
+- **Tracking Control**: Optional `track` field for analytics control
+- **Schema Consistency**: API requests match database storage exactly
+- **JSON Storage**: Generic `data` field supports flexible configurations
+
+### Processing Flow
+
+1. **Request Validation**: Pydantic schemas validate type-specific data
+2. **Link Creation**: Generic `data` field stores flattened type configuration
+3. **Redirect Processing**: LinkProcessor handles type-based URL resolution
+4. **Event Tracking**: Optional click tracking based on `track` field
+5. **Response**: Seamless redirect to resolved target URL
+
+### Migration Guide
+
+**From Legacy API to Generic Link System:**
+
+Old format (still supported for backward compatibility):
+```json
+{
+  "url": "https://example.com",
+  "title": "My Link"
+}
+```
+
+New format (recommended):
+```json
+{
+  "url": "https://example.com",
+  "domain_id": "custom.domain.com",
+  "data": {
+    "type": "simple",
+    "target_url": "https://example.com"
+  },
+  "track": true,
+  "title": "My Link"
+}
+```
+
+**Key Changes:**
+- `domain_id` is now mandatory for all new links
+- `data` field uses discriminated unions for type safety
+- `track` field provides granular analytics control
+- LinkProcessor replaces LinkEncoder for processing
+- API requests now match database storage exactly
+
+## �📚 API Reference
 
 Detailed API documentation is available at:
 - Swagger UI: `http://localhost:8000/docs`
@@ -198,85 +317,108 @@ Authorization: Bearer your-jwt-token
 
 #### Links
 
-The Link API supports both minimal and advanced usage patterns. Start simple and add features as needed.
+#### Links
 
-**1. Minimal Request (Just URL)**
+The Link API supports the Generic Link System with type-based routing and discriminated union validation.
+
+**1. Simple Link (Standard Redirection)**
 ```http
 POST /api/v1/links/
 Content-Type: application/json
 Authorization: Bearer your-jwt-token
 
 {
-  "url": "https://example.com/very/long/url"
+  "url": "https://example.com/target",
+  "domain_id": "custom.domain.com",
+  "data": {
+    "type": "simple",
+    "target_url": "https://example.com/target"
+  },
+  "track": true
 }
 ```
 
-**2. With Custom Short Code**
+**2. Round Robin Link (Load Distribution)**
 ```http
 POST /api/v1/links/
 Content-Type: application/json
 Authorization: Bearer your-jwt-token
 
 {
-  "url": "https://example.com/very/long/url",
-  "short_code": "mylink"
+  "url": "https://example.com/target",
+  "domain_id": "custom.domain.com",
+  "short_code": "distribute",
+  "data": {
+    "type": "round_robin",
+    "urls": [
+      "https://server1.example.com",
+      "https://server2.example.com",
+      "https://server3.example.com"
+    ],
+    "current_index": 0
+  },
+  "track": false
 }
 ```
 
-**3. With Title and Description**
+**3. Complex Link (Advanced Routing)**
 ```http
 POST /api/v1/links/
 Content-Type: application/json
 Authorization: Bearer your-jwt-token
 
 {
-  "url": "https://example.com/very/long/url",
-  "title": "My Example Link",
-  "description": "This is an example link for testing"
+  "url": "https://example.com/target",
+  "domain_id": "custom.domain.com",
+  "title": "Smart Routing Link",
+  "data": {
+    "type": "complex",
+    "rules": [
+      {
+        "condition": {"device": "mobile"},
+        "target_url": "https://mobile.example.com"
+      },
+      {
+        "condition": {"country": "US"},
+        "target_url": "https://us.example.com"
+      }
+    ],
+    "default_url": "https://default.example.com"
+  },
+  "track": true,
+  "password": "secure123"
 }
 ```
 
-**4. Advanced Usage (Custom Domain, Pixels, Tags)**
-```http
-POST /api/v1/links/
-Content-Type: application/json
-Authorization: Bearer your-jwt-token
-
-{
-  "url": "https://example.com/marketing/campaign",
-  "space_id": "123e4567-e89b-12d3-a456-426614174000",
-  "domain_id": "short.ly",
-  "short_code": "campaign2024",
-  "title": "Marketing Campaign 2024",
-  "description": "Main landing page for our 2024 marketing campaign",
-  "tags": ["marketing", "campaign", "2024"],
-  "password": "secret123",
-  "pixel_ids": [
-    "123e4567-e89b-12d3-a456-426614174001",
-    "123e4567-e89b-12d3-a456-426614174002"
-  ],
-  "expires_at": "2024-12-31T23:59:59"
-}
-```
-
-**Response (All Examples)**
+**Response (All Link Types)**
 ```json
 {
   "id": "123e4567-e89b-12d3-a456-426614174000",
   "space_id": "123e4567-e89b-12d3-a456-426614174001",
+  "domain_id": "custom.domain.com",
   "short_code": "abc123",
-  "url": "https://example.com/very/long/url",
-  "title": "My Example Link",
-  "short_url": "http://localhost:8000/abc123",
+  "url": "https://example.com/target",
+  "title": "Smart Routing Link",
+  "short_url": "https://custom.domain.com/abc123",
+  "data": {
+    "type": "complex",
+    "rules": [...],
+    "default_url": "https://default.example.com"
+  },
+  "track": true,
   "is_active": true,
   "created_at": "2023-05-15T10:30:45.123456"
 }
 ```
 
 **Field Descriptions**
-- `url` (required): The destination URL to redirect to
+- `url` (required): The original target URL
+- `domain_id` (required): Custom domain name (mandatory for all links)
+- `data` (required): Type-specific configuration using discriminated unions
+  - `type` (required): Link type - "simple", "round_robin", or "complex"
+  - Type-specific fields vary based on the `type` value
+- `track` (optional): Enable/disable click tracking (default: true)
 - `space_id` (optional): Space ID for organization
-- `domain_id` (optional): Custom domain name (must be verified)
 - `short_code` (optional): Custom short code (auto-generated if not provided)
 - `title` (optional): Human-readable title for the link
 - `description` (optional): Longer description for the link
@@ -288,14 +430,75 @@ Authorization: Bearer your-jwt-token
 **Other Endpoints**
 - `GET /api/v1/links` - List all links (paginated)
 - `GET /api/v1/links/{link_id}` - Get link details
-- `PUT /api/v1/links/{link_id}` - Update a link
+- `PUT /api/v1/links/{link_id}` - Update a link (supports type changes)
 - `DELETE /api/v1/links/{link_id}` - Delete a link
-- `GET /go/{short_code}` - Redirect to original URL
 
-#### Analytics
+#### Link Redirection & Event Tracking
+
+**Enhanced Redirect Endpoint**
+```bash
+# Basic redirect
+GET /go/{short_code}
+
+# Redirect with enhanced event tracking
+GET /go/{short_code}?event_type=CONVERSION&utm_source=email&utm_campaign=newsletter&custom_data={"user_id":"123","action":"download"}
+```
+
+**Parameters:**
+- `short_code` (required): The short code of the link
+- `domain` (optional): Custom domain if using custom domains
+- `password` (optional): Password if the link is password-protected
+- `event_type` (optional): Type of event to log (default: "CLICK")
+- `referrer` (optional): Custom referrer for analytics
+- `utm_source` (optional): UTM source parameter
+- `utm_medium` (optional): UTM medium parameter
+- `utm_campaign` (optional): UTM campaign parameter
+- `utm_content` (optional): UTM content parameter
+- `utm_term` (optional): UTM term parameter
+- `custom_data` (optional): Additional custom event data as JSON string
+
+**Features:**
+- ✅ Single request for both redirect and comprehensive event tracking
+- ✅ Automatic click counting and basic analytics
+- ✅ UTM parameter tracking for campaign analysis
+- ✅ Custom event data support
+- ✅ Password-protected link handling
+- ✅ No need for separate event creation API calls
+
+#### Domains
+
+**Important:** Domains are mandatory for all new links in the Generic Link System. This ensures proper branding and prevents link creation without domain ownership.
+
+**Create Domain**
+```bash
+curl -X POST "http://localhost:8000/api/v1/domains/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "domain": "custom.example.com",
+    "space_id": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+**Parameters:**
+- `domain` (required): Domain name (must be valid domain format)
+- `space_id` (required): UUID of the space that will own this domain
+
+**Other Domain Endpoints**
+- `GET /api/v1/domains` - List all domains accessible to user (filtered by space membership)
+- `GET /api/v1/domains/{domain_name}` - Get specific domain details (requires admin/owner access)
+- `DELETE /api/v1/domains/{domain_name}` - Delete a domain (requires admin/owner access)
+
+**Note:** Domain names cannot be modified once created. To change a domain name, you must delete the existing domain and create a new one. All links created through the Generic Link System require a valid `domain_id` field.
+
+#### Analytics & Events
 - `GET /api/v1/analytics/links/{link_id}` - Get link analytics
 - `GET /api/v1/analytics/domains/{domain}` - Get domain analytics
 - `GET /api/v1/analytics/summary` - Get summary statistics
+- `GET /api/v1/events` - List events (with optional link_id filter)
+- `GET /api/v1/events/{event_id}` - Get specific event details
+
+**Note:** Event creation is now integrated into the redirect endpoint (`/go/{short_code}`) for better performance and ACID compliance. The separate `POST /api/v1/events` endpoint has been removed to prevent wasteful double HTTP requests and ensure atomic redirect-and-track operations. Event tracking can be controlled per-link using the `track` field in the Generic Link System.
 
 ## 🔧 Configuration
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, HttpUrl
 from app.db.database import SessionLocal, get_db
 from app.models import models
 from app.crud import crud_link, crud_event
-from app.core.link_utils import LinkEncoder
+from app.core.link_utils import LinkEncoder, LinkProcessor  # Support both old and new
 from app.core.config import settings
 
 # Set up logging
@@ -133,9 +133,6 @@ async def redirect_link(
                         "has_password": True
                     }
                 )
-        
-        # Increment click count
-        crud_link.increment_link_clicks(db, db_link.id)
         
         # Log the click event
         try:

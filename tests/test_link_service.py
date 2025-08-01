@@ -292,8 +292,8 @@ def test_update_link_success():
     assert updated_link.link_data["url"] == "https://example.com/old"  # Should be unchanged
     db.commit.assert_called_once()
 
-def test_get_link_by_short_code_with_increment():
-    """Test getting a link by short code with click increment."""
+def test_get_link_by_short_code_simple():
+    """Test getting a link by short code (click counting handled by event system)."""
     # Setup
     db = MagicMock(spec=Session)
     link_service = LinkService(db)
@@ -304,21 +304,18 @@ def test_get_link_by_short_code_with_increment():
         space_id=TEST_SPACE_ID,
         short_code="test123",
         is_active=True,
-        link_data={"url": "https://example.com", "clicks": 0}
+        link_data={"url": "https://example.com"}
     )
     
     # Mock the query
     db.query.return_value.filter.return_value.first.return_value = test_link
     
-    # Execute with increment_clicks=True
-    result = link_service.get_link_by_short_code("test123", increment_clicks=True)
+    # Execute
+    result = link_service.get_link_by_short_code("test123")
     
-    # Assert
+    # Assert - service layer only retrieves the link, doesn't modify it
     assert result is not None
-    assert result.link_data["clicks"] == 1  # Should be incremented
-    db.commit.assert_called_once()
-    
-    # Test without increment
-    result = link_service.get_link_by_short_code("test123", increment_clicks=False)
-    assert result.link_data["clicks"] == 1  # Should remain the same
-    assert db.commit.call_count == 1  # commit should only be called once
+    assert result.short_code == "test123"
+    assert result.link_data["url"] == "https://example.com"
+    # Click counting is handled by event system at API level, not service level
+    db.commit.assert_not_called()  # Service layer shouldn't modify data

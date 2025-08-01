@@ -2,7 +2,7 @@
 Service layer for link-related operations.
 Handles business logic for link creation, updates, and management.
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from uuid import UUID
 from datetime import datetime
 import base64
@@ -15,7 +15,6 @@ from app.core.short_code import generate_short_code, is_valid_short_code, genera
 from app.core.link_utils import LinkEncoder
 # QR code generation is now handled in the frontend
 from app.core.config import settings
-from app.api.schemas import LinkCreate, LinkUpdate
 
 class LinkService:
     """Service for handling link-related operations."""
@@ -24,12 +23,12 @@ class LinkService:
         """Initialize the service with a database session."""
         self.db = db
     
-    def create_link(self, link_data: LinkCreate, user_id: UUID) -> models.Link:
+    def create_link(self, link_data: Dict[str, Any], user_id: UUID) -> models.Link:
         """
         Create a new shortened link - supports both minimal and advanced usage.
         
         Args:
-            link_data: Data for the new link
+            link_data: Data for the new link (dict format)
             user_id: User ID creating the link
             
         Returns:
@@ -39,7 +38,8 @@ class LinkService:
             ValueError: If the short code is invalid or already in use
         """
         # Get user's default space if no space_id is provided
-        if not link_data.space_id:
+        space_id = link_data.get('space_id')
+        if not space_id:
             user = crud_user.get_user(self.db, user_id)
             if not user:
                 raise ValueError("User not found")
@@ -49,11 +49,15 @@ class LinkService:
             
             space_id = user.default_space_id
         else:
-            space_id = link_data.space_id
+            space_id = link_data['space_id']
+        
+        # Get domain_id early as it's needed for both validation and generation
+        domain_id = link_data.get('domain_id')
         
         # Validate short code if provided
-        if link_data.short_code:
-            if not is_valid_short_code(link_data.short_code):
+        short_code = link_data.get('short_code')
+        if short_code:
+            if not is_valid_short_code(short_code):
                 raise ValueError(
                     "Short code contains invalid characters. "
                     "Use only letters, numbers, hyphens, and underscores."
@@ -61,26 +65,27 @@ class LinkService:
             
             # Check if short code is already in use
             existing_link = crud_link.get_link_by_domain_and_short_code(
-                self.db, link_data.short_code, link_data.domain_id
+                self.db, short_code, domain_id
             )
             if existing_link:
-                raise ValueError(f"Short code '{link_data.short_code}' is already in use")
+                raise ValueError(f"Short code '{short_code}' is already in use")
         
         # If no short code provided, generate one
-        if not link_data.short_code:
-            link_data.short_code = generate_unique_short_code(
-                self.db, length=settings.SHORT_CODE_LENGTH
+        if not short_code:
+            short_code = generate_unique_short_code(
+                self.db, domain_id, length=settings.SHORT_CODE_LENGTH
             )
-            if not link_data.short_code:
+            if not short_code:
                 raise ValueError("Failed to generate a unique short code. Please try again.")
+            link_data['short_code'] = short_code
         
         # If domain is provided, verify it exists and is verified
-        if link_data.domain_id:
-            domain = crud_domain.get_domain(self.db, link_data.domain_id)
+        if domain_id:
+            domain = crud_domain.get_domain(self.db, domain_id)
             if not domain:
-                raise ValueError(f"Domain '{link_data.domain_id}' not found")
+                raise ValueError(f"Domain '{domain_id}' not found")
             if not domain.verified:
-                raise ValueError(f"Domain '{link_data.domain_id}' is not verified")
+                raise ValueError(f"Domain '{domain_id}' is not verified")
         
         # Create the link
         db_link = crud_link.create_link(self.db, link_data, space_id)
@@ -90,7 +95,7 @@ class LinkService:
     def update_link(
         self, 
         link_id: UUID, 
-        update_data: LinkUpdate,
+        update_data: Dict[str, Any],
         user_id: UUID = None
     ) -> Optional[models.Link]:
         """
@@ -98,7 +103,7 @@ class LinkService:
         
         Args:
             link_id: ID of the link to update
-            update_data: Data to update
+            update_data: Data to update (dict format)
             user_id: Optional user ID making the update
             
         Returns:
@@ -117,8 +122,7 @@ class LinkService:
     def get_link_by_short_code(
         self, 
         short_code: str, 
-        domain: str = None,
-        increment_clicks: bool = False
+        domain: str = None
     ) -> Optional[models.Link]:
         """
         Get a link by its short code and optional domain.
@@ -126,7 +130,6 @@ class LinkService:
         Args:
             short_code: The short code of the link
             domain: Optional domain name
-            increment_clicks: Whether to increment the click count
             
         Returns:
             The Link object if found, None otherwise
@@ -135,9 +138,8 @@ class LinkService:
             self.db, short_code, domain
         )
         
-        if db_link and increment_clicks:
-            db_link = crud_link.increment_link_clicks(self.db, db_link.id)
-            
+        # Click counting is handled by the event system at the API level
+        # This service method only retrieves the link
         return db_link
     
     def get_link_info(self, link_id: UUID) -> Optional[Dict[str, Any]]:
@@ -154,8 +156,9 @@ class LinkService:
         if not db_link:
             return None
             
-        # Get click statistics
-        click_count = db_link.link_data.get("clicks", 0)
+        # Get click statistics from events table
+        from app.crud import crud_event
+        click_count = crud_event.get_link_click_count(self.db, link_id)
         
         # Get QR code if it exists
         qr_code = None

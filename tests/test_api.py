@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.main import app
+from main import app
 from app.models import models
 from app.core.security import create_access_token
 

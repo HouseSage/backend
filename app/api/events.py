@@ -23,17 +23,7 @@ router = APIRouter()
 
 # Event Endpoints
 
-@router.post("/", response_model=schemas.Event, status_code=status.HTTP_201_CREATED)
-def create_event_endpoint(event: schemas.EventCreate, db: Session = Depends(get_db)) -> Any:
-   
-    link = crud_link.get_link(db, link_id=event.link_id)
-    if not link:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Link with ID '{event.link_id}' not found. Cannot create event.",
-        )
-    
-    return crud_event.create_event(db=db, event=event)
+
 
 @router.get("/", response_model=List[schemas.Event])
 def read_events_endpoint(

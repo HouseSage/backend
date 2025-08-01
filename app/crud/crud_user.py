@@ -1,7 +1,7 @@
 from uuid import UUID
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.models import models
-from app.api import schemas 
 from app.core.security import get_password_hash
 
 # Returns a user by their UUID
@@ -17,10 +17,10 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.User).offset(skip).limit(limit).all()
 
 # Creates a new user with hashed password
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = get_password_hash(user.password)
+def create_user(db: Session, user: Dict[str, Any]):
+    hashed_password = get_password_hash(user.get('password'))
     db_user = models.User(
-        email=user.email,
+        email=user.get('email'),
         password_hash=hashed_password
     )
     db.add(db_user)
@@ -29,8 +29,8 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 # Updates user details (email, password, default space)
-def update_user(db: Session, db_user: models.User, user_in: schemas.UserUpdate):
-    user_data = user_in.model_dump(exclude_unset=True)
+def update_user(db: Session, db_user: models.User, user_in: Dict[str, Any]):
+    user_data = user_in  # user_in is already a dict
     
     if "password" in user_data and user_data["password"]:
         hashed_password = get_password_hash(user_data["password"])

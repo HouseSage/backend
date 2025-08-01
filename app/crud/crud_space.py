@@ -1,8 +1,8 @@
 from uuid import UUID
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.models import models
-from app.api import schemas
 from app.models.models import SpaceUserRole
 
 
@@ -23,9 +23,9 @@ def get_spaces_by_user(db: Session, user_id: UUID, skip: int = 0, limit: int = 1
     )
 
 # Creates a new space and assigns the owner
-def create_space_with_owner(db: Session, space_in: schemas.SpaceCreate, owner_id: UUID) -> models.Space:
+def create_space_with_owner(db: Session, space_in: Dict[str, Any], owner_id: UUID) -> models.Space:
     
-    db_space = models.Space(name=space_in.name, description=space_in.description)
+    db_space = models.Space(name=space_in.get('name'), description=space_in.get('description'))
     db.add(db_space)
     db.commit()
 
@@ -41,7 +41,7 @@ def create_space_with_owner(db: Session, space_in: schemas.SpaceCreate, owner_id
     return db_space
 
 # Updates space details
-def update_space(db: Session, db_space: models.Space, space_in: schemas.SpaceUpdate) -> models.Space:
+def update_space(db: Session, db_space: models.Space, space_in: Dict[str, Any]) -> models.Space:
     update_data = space_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_space, key, value)

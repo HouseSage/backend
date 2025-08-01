@@ -39,7 +39,7 @@ router = APIRouter()
 
 @router.post("/", response_model=schemas.Link, status_code=status.HTTP_201_CREATED)
 def create_link_endpoint(
-    link: schemas.LinkCreate = Body(...),
+    link_in: schemas.LinkCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ) -> Any:
@@ -51,8 +51,14 @@ def create_link_endpoint(
     With title: {"url": "https://example.com", "title": "My Link"}
     """
     try:
+        print(f"DEBUG: Received validated link_in = {link_in}")
+        
+        # Convert validated schema to dict for service layer
+        link_dict = link_in.model_dump()
+        print(f"DEBUG: link_dict = {link_dict}")
+        
         link_service = LinkService(db)
-        db_link = link_service.create_link(link_data=link, user_id=current_user.id)
+        db_link = link_service.create_link(link_data=link_dict, user_id=current_user.id)
         return schemas.Link.from_db_model(db_link)
     except ValueError as e:
         raise HTTPException(
@@ -71,25 +77,34 @@ def create_link_endpoint(
 def read_links_endpoint(
     space_id: UUID | None = Query(None, description="Filter links by Space ID"),
     domain_id: str | None = Query(None, description="Filter links by Domain ID (domain name)"),
+    is_active: bool | None = Query(True, description="Filter links by active status (defaults to true)"),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ) -> Any:
     """
-    Get a list of shortened links, optionally filtered by space or domain.
+    Get a list of shortened links, optionally filtered by space, domain, or active status.
+    By default, only active links are returned.
     
     - **space_id**: Filter links by space ID (optional)
     - **domain_id**: Filter links by domain ID (optional)
+    - **is_active**: Filter links by active status (defaults to true, set to false to see inactive links)
     - **skip**: Number of records to skip for pagination
     - **limit**: Maximum number of records to return (max 100)
     """
     try:
         link_service = LinkService(db)
         
-        # For now, we'll just return all links
-        # In a real app, you'd want to filter by the current user's permissions
-        db_links = crud_link.get_all_links(db, skip=skip, limit=min(limit, 100))
+        # Use the new filtered query function with is_active defaulting to True
+        db_links = crud_link.get_links_filtered(
+            db=db,
+            space_id=space_id,
+            domain_id=domain_id,
+            is_active=is_active,
+            skip=skip,
+            limit=min(limit, 100)
+        )
         return [schemas.Link.from_db_model(link) for link in db_links]
     except Exception as e:
         raise HTTPException(
@@ -133,9 +148,13 @@ def update_link_endpoint(
     """
     try:
         link_service = LinkService(db)
+        
+        # Convert Pydantic model to dict for service layer
+        update_dict = link_in.model_dump(exclude_unset=True)
+        
         updated_link = link_service.update_link(
             link_id=link_id,
-            update_data=link_in,
+            update_data=update_dict,
             user_id=current_user.id
         )
         
@@ -146,6 +165,11 @@ def update_link_endpoint(
             )
             
         return schemas.Link.from_db_model(updated_link)
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -164,21 +188,29 @@ def delete_link_endpoint(
     current_user = Depends(get_current_active_user)
 ) -> Any:
     """
-    Delete a shortened link.
+    Delete a shortened link with authorization checks.
     
     - **link_id**: The UUID of the link to delete
     """
-    db_link = crud_link.get_link(db, link_id=link_id)
-    if not db_link:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Link not found",
-        )
-    
-    # In a real app, you'd check if the current user has permission to delete this link
     try:
-        deleted_link = crud_link.delete_link(db=db, link_id=link_id)
+        link_service = LinkService(db)
+        deleted_link = link_service.delete_link(
+            link_id=link_id,
+            user_id=current_user.id
+        )
+        
+        if not deleted_link:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Link not found",
+            )
+            
         return schemas.Link.from_db_model(deleted_link)
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

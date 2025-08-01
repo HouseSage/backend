@@ -39,8 +39,9 @@ def create_space_endpoint(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user),
 ) -> Any:
-   
-    return crud_space.create_space_with_owner(db=db, space_in=space_in, owner_id=current_user.id)
+    # Convert schema to dict for CRUD layer
+    space_dict = space_in.model_dump()
+    return crud_space.create_space_with_owner(db=db, space_in=space_dict, owner_id=current_user.id)
 
 @router.get("/", response_model=List[schemas.Space])
 def list_spaces_for_current_user_endpoint(

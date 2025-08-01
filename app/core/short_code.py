@@ -40,23 +40,24 @@ def is_valid_short_code(code: str) -> bool:
         return False
     return all(c in SAFE_ALPHABET for c in code)
 
-def generate_unique_short_code(db, max_attempts: int = 10, length: Optional[int] = None) -> Optional[str]:
+def generate_unique_short_code(db, domain_id: str, max_attempts: int = 10, length: Optional[int] = None) -> Optional[str]:
     """
-    Generate a unique short code that doesn't exist in the database.
+    Generate a unique short code that doesn't exist in the database for the given domain.
     
     Args:
         db: Database session
+        domain_id: Domain ID (required - all links must have a domain)
         max_attempts: Maximum number of attempts to generate a unique code
         length: Length of the short code. If None, uses the default from settings.
         
     Returns:
-        A unique short code, or None if unable to generate one.
+        A unique short code for the given domain, or None if unable to generate one.
     """
     from app.crud import crud_link
     
     for _ in range(max_attempts):
         code = generate_short_code(length)
-        if not crud_link.get_link_by_short_code(db, code):
+        if not crud_link.get_link_by_domain_and_short_code(db, code, domain_id):
             return code
     
     return None

@@ -1,8 +1,8 @@
 import secrets
 from uuid import UUID
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.models import models
-from app.api import schemas
 
 # Generates a secure random verification token
 def generate_verification_token(length: int = 32) -> str:
@@ -25,12 +25,12 @@ def get_all_domains(db: Session, skip: int = 0, limit: int = 100) -> list[models
     return db.query(models.Domain).offset(skip).limit(limit).all()
 
 # Creates a new domain with a verification token
-def create_domain(db: Session, domain: schemas.DomainCreate) -> models.Domain:
+def create_domain(db: Session, domain: Dict[str, Any]) -> models.Domain:
     verification_token = generate_verification_token()
     db_domain = models.Domain(
-        domain=domain.domain,
+        domain=domain.get('domain'),
         is_active=True,  # Always set by backend
-        space_id=domain.space_id,
+        space_id=domain.get('space_id'),
         verified=False,  # Always set by backend
         verification_token=verification_token
     )
@@ -39,15 +39,7 @@ def create_domain(db: Session, domain: schemas.DomainCreate) -> models.Domain:
     db.refresh(db_domain)
     return db_domain
 
-# Updates domain details (is_active, verified)
-def update_domain(db: Session, db_domain: models.Domain, domain_in: schemas.DomainUpdate) -> models.Domain:
-    # Do not allow user to update is_active or verified directly
-    # Only allow backend logic to update these fields if needed
-    # (You can add custom logic here if needed)
-    db.add(db_domain)
-    db.commit()
-    db.refresh(db_domain)
-    return db_domain
+
 
 # Deletes a domain by its name
 def delete_domain(db: Session, domain_name: str) -> models.Domain | None:
