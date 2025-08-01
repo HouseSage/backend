@@ -68,7 +68,7 @@ class PasswordVerificationRequest(BaseModel):
 async def get_link_or_raise(
     db: Session, 
     short_code: str, 
-    domain: Optional[str] = None
+    domain: str
 ) -> models.Link:
     """Helper function to get a link or raise appropriate exceptions."""
     db_link = crud_link.get_link_by_domain_and_short_code(
@@ -99,9 +99,9 @@ async def get_link_or_raise(
 async def redirect_link(
     request: Request,
     short_code: str = Path(..., description="The short code of the link"),
-    domain: Optional[str] = Query(
-        None, 
-        description="Optional domain if using custom domains"
+    domain: str = Query(
+        ..., 
+        description="Required domain name for the link"
     ),
     password: Optional[str] = Query(
         None, 
