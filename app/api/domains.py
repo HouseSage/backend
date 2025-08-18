@@ -1,7 +1,7 @@
 from typing import List, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 
 from app.api import schemas
@@ -9,6 +9,7 @@ from app.crud import crud_domain
 from app.db.database import SessionLocal
 from app.core.security import get_current_active_user
 from app.models.models import User as UserModel
+from app.core.exceptions import ConflictException
 
 # Dependency that provides a database session for each request
 def get_db():
@@ -30,10 +31,7 @@ def create_domain_endpoint(
     # Check if domain already exists
     db_domain = crud_domain.get_domain(db, domain_name=domain_in.domain)
     if db_domain:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Domain already exists.",
-        )
+        raise ConflictException("Domain already exists")
     
     # Verify user has access to the space
     from app.api.spaces import check_space_membership

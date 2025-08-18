@@ -1,12 +1,13 @@
 from typing import List, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 
 from app.api import schemas
 from app.crud import crud_event, crud_link 
 from app.db.database import SessionLocal
+from app.core.exceptions import NotFoundException
 
 # Imports FastAPI, SQLAlchemy, app schemas, and CRUD utilities for event API endpoints
 
@@ -44,5 +45,5 @@ def read_event_endpoint(event_id: UUID, db: Session = Depends(get_db)) -> Any:
     
     db_event = crud_event.get_event(db, event_id=event_id)
     if db_event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise NotFoundException("Event")
     return db_event

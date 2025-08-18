@@ -1,7 +1,7 @@
 from typing import List, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api import schemas
@@ -9,6 +9,7 @@ from app.crud import crud_user
 from app.db.database import SessionLocal
 from app.core.security import get_current_active_user
 from app.crud import crud_space
+from app.core.exceptions import NotFoundException, BadRequestException, ConflictException
 
 # Imports FastAPI, SQLAlchemy, app schemas, and CRUD utilities for user API endpoints
 
@@ -66,7 +67,7 @@ def read_user_endpoint(user_id: UUID, db: Session = Depends(get_db), current_use
     
     db_user = crud_user.get_user(db, user_id=user_id)
     if db_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise NotFoundException("User")
     return db_user
 
 @router.put("/{user_id}", response_model=schemas.User)
@@ -76,17 +77,11 @@ def update_user_endpoint(
     
     db_user = crud_user.get_user(db, user_id=user_id)
     if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise NotFoundException("User")
     if user_in.email:
         existing_user_with_email = crud_user.get_user_by_email(db, email=user_in.email)
         if existing_user_with_email and existing_user_with_email.id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered by another user.",
-            )
+            raise ConflictException("Email already registered by another user")
     updated_user = crud_user.update_user(db=db, db_user=db_user, user_in=user_in)
     return updated_user
 
@@ -97,15 +92,9 @@ def delete_user_endpoint(user_id: UUID, db: Session = Depends(get_db), current_u
     """
     db_user = crud_user.get_user(db, user_id=user_id)
     if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise NotFoundException("User")
     # Use the correct function name from crud_user
     deleted_user = crud_user.delete_user(db=db, user_id=user_id)
     if not deleted_user:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user",
-        )
+        raise BadRequestException("Failed to delete user")
     return deleted_user

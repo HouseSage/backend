@@ -14,6 +14,7 @@ from app.models import models
 from app.crud import crud_link, crud_event
 from app.core.link_utils import LinkEncoder, LinkProcessor  # Support both old and new
 from app.core.config import settings
+from app.core.exceptions import NotFoundException, ForbiddenException, UnauthorizedException, BadRequestException
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -21,24 +22,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Custom exception for link not found or inactive
-class LinkNotFoundError(HTTPException):
-    def __init__(self, detail: str = "Link not found or inactive"):
-        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+# Helper functions for raising standard exceptions
+def raise_link_not_found(detail: str = "Link not found or inactive"):
+    raise NotFoundException(detail)
 
-# Custom exception for password required
-class PasswordRequiredError(HTTPException):
-    def __init__(self, detail: str = "Password required"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-            headers={"WWW-Authenticate": 'Basic realm="Link access"'},
-        )
+def raise_password_required(detail: str = "Password required"):
+    raise ForbiddenException(detail)
 
-# Custom exception for invalid password
-class InvalidPasswordError(HTTPException):
-    def __init__(self, detail: str = "Invalid password"):
-        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+def raise_invalid_password(detail: str = "Invalid password"):
+    raise UnauthorizedException(detail)
 
 # Dependency to get form data
 
@@ -77,11 +69,11 @@ async def get_link_or_raise(
     
     if not db_link:
         logger.warning(f"Link not found: {short_code} (domain: {domain})")
-        raise LinkNotFoundError()
+        raise_link_not_found()
         
     if not db_link.is_active:
         logger.warning(f"Link is inactive: {short_code} (domain: {domain})")
-        raise LinkNotFoundError("This link is no longer active")
+        raise_link_not_found("This link is no longer active")
         
     return db_link
 
@@ -158,10 +150,7 @@ async def redirect_link(
         target_url = link_data.get("url")
         if not target_url:
             logger.error(f"No target URL found for link: {db_link.id}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Invalid link configuration"
-            )
+            raise BadRequestException("Invalid link configuration")
         
         # If this is an API request or form submission, return the redirect URL in the response
         if "application/json" in request.headers.get("accept", "") or request.method == "POST":
@@ -194,12 +183,9 @@ async def redirect_link(
         response = RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
         return response
         
-    except HTTPException:
-        # Re-raise HTTP exceptions
+    except (NotFoundException, ForbiddenException, UnauthorizedException, BadRequestException):
+        # Re-raise API exceptions
         raise
     except Exception as e:
         logger.error(f"Error processing redirect: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while processing your request"
-        ) from e
+        raise BadRequestException("An error occurred while processing your request") from e

@@ -1,14 +1,15 @@
 from typing import List, Any
 from uuid import UUID 
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.models.models import User as UserModel, SpaceUserRole as ModelSpaceUserRole, SpaceUser as SpaceUserModel 
 from app.api import schemas 
 from app.core.security import get_current_active_user
-from app.crud import crud_space, crud_user 
+from app.crud import crud_space, crud_user
+from app.core.exceptions import NotFoundException, ForbiddenException, BadRequestException 
 
 # Initializes the API router for space endpoints
 router = APIRouter()
@@ -17,19 +18,19 @@ router = APIRouter()
 def check_space_membership(db: Session, space_id: UUID, user_id: UUID) -> schemas.SpaceUser | None:
     space_user = crud_space.get_space_user(db, space_id=space_id, user_id=user_id)
     if not space_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a member of this space")
+        raise ForbiddenException("Not a member of this space")
     return schemas.SpaceUser.model_validate(space_user) 
 
 def check_space_admin_or_owner(db: Session, space_id: UUID, user_id: UUID) -> schemas.SpaceUser:
     space_user = check_space_membership(db, space_id, user_id)
     if space_user.role not in [ModelSpaceUserRole.ADMIN.value, ModelSpaceUserRole.OWNER.value]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires ADMIN or OWNER role")
+        raise ForbiddenException("Requires ADMIN or OWNER role")
     return space_user
 
 def check_space_owner(db: Session, space_id: UUID, user_id: UUID) -> schemas.SpaceUser:
     space_user = check_space_membership(db, space_id, user_id)
     if space_user.role != ModelSpaceUserRole.OWNER.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires OWNER role")
+        raise ForbiddenException("Requires OWNER role")
     return space_user
 
 # Space Endpoints
@@ -63,7 +64,7 @@ def read_space_endpoint(
     check_space_membership(db, space_id=space_id, user_id=current_user.id)
     db_space = crud_space.get_space(db, space_id=space_id)
     if not db_space:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Space not found")
+        raise NotFoundException("Space")
     return db_space
 
 @router.put("/{space_id}", response_model=schemas.Space)
@@ -76,7 +77,7 @@ def update_space_endpoint(
    
     db_space = crud_space.get_space(db, space_id=space_id)
     if not db_space:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Space not found")
+        raise NotFoundException("Space")
     check_space_admin_or_owner(db, space_id=space_id, user_id=current_user.id)
     return crud_space.update_space(db=db, db_space=db_space, space_in=space_in)
 
@@ -89,11 +90,11 @@ def delete_space_endpoint(
    
     db_space = crud_space.get_space(db, space_id=space_id)
     if not db_space:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Space not found")
+        raise NotFoundException("Space")
     check_space_owner(db, space_id=space_id, user_id=current_user.id)
     
     if current_user.default_space_id == space_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your default space. Please change your default space before deleting.")
+        raise BadRequestException("Cannot delete your default space. Please change your default space before deleting.")
 
     # Remove all users from the space to avoid foreign key constraint errors
     space_users = crud_space.get_space_users_with_roles(db, space_id=space_id)

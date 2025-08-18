@@ -99,6 +99,10 @@ def register_exception_handlers(app):
     """Register exception handlers for the FastAPI app."""
     from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
+    from sqlalchemy.exc import IntegrityError, OperationalError
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     @app.exception_handler(APIException)
     async def api_exception_handler(request, exc: APIException):
@@ -128,6 +132,32 @@ def register_exception_handlers(app):
                     "code": "validation_error",
                     "message": "Validation Error",
                     "details": errors
+                }
+            }
+        )
+    
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request, exc: IntegrityError):
+        logger.error(f"Database integrity error: {str(exc)}")
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "error": {
+                    "code": "integrity_error",
+                    "message": "A database constraint was violated"
+                }
+            }
+        )
+    
+    @app.exception_handler(OperationalError)
+    async def operational_error_handler(request, exc: OperationalError):
+        logger.error(f"Database operational error: {str(exc)}")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "error": {
+                    "code": "database_error",
+                    "message": "Database service is temporarily unavailable"
                 }
             }
         )

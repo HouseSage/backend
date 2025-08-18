@@ -4,7 +4,7 @@ Link API endpoints for creating, reading, updating, and deleting shortened links
 from typing import List, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Response, Body
+from fastapi import APIRouter, Depends, status, Query, Request, Response, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import base64
@@ -18,6 +18,7 @@ from app.services import LinkService
 from app.api.schemas import LinkCreate
 from app.core.config import settings
 from app.core.security import get_current_active_user
+from app.core.exceptions import BadRequestException, NotFoundException, ForbiddenException
 
 # Dependency that provides a database session for each request
 def get_db():
@@ -61,17 +62,11 @@ def create_link_endpoint(
         db_link = link_service.create_link(link_data=link_dict, user_id=current_user.id)
         return schemas.Link.from_db_model(db_link)
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        raise BadRequestException(str(e))
     except Exception as e:
         print('Link creation error:', e)
         traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while creating the link.",
-        ) from e
+        raise BadRequestException("An error occurred while creating the link") from e
 
 @router.get("/", response_model=List[schemas.Link])
 def read_links_endpoint(
@@ -107,10 +102,7 @@ def read_links_endpoint(
         )
         return [schemas.Link.from_db_model(link) for link in db_links]
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while retrieving links.",
-        ) from e
+        raise BadRequestException("An error occurred while retrieving links") from e
 
 @router.get("/{link_id}", response_model=schemas.Link)
 def read_link_endpoint(
@@ -125,10 +117,7 @@ def read_link_endpoint(
     """
     db_link = crud_link.get_link(db, link_id=link_id)
     if db_link is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Link not found"
-        )
+        raise NotFoundException("Link")
     
     # In a real app, you'd check if the current user has permission to view this link
     return schemas.Link.from_db_model(db_link)
@@ -159,27 +148,15 @@ def update_link_endpoint(
         )
         
         if not updated_link:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Link not found",
-            )
+            raise NotFoundException("Link")
             
         return schemas.Link.from_db_model(updated_link)
     except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e),
-        )
+        raise ForbiddenException(str(e))
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        raise BadRequestException(str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while updating the link.",
-        ) from e
+        raise BadRequestException("An error occurred while updating the link") from e
 
 @router.delete("/{link_id}", response_model=schemas.Link)
 def delete_link_endpoint(
@@ -200,19 +177,10 @@ def delete_link_endpoint(
         )
         
         if not deleted_link:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Link not found",
-            )
+            raise NotFoundException("Link")
             
         return schemas.Link.from_db_model(deleted_link)
     except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e),
-        )
+        raise ForbiddenException(str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while deleting the link.",
-        ) from e
+        raise BadRequestException("An error occurred while deleting the link") from e

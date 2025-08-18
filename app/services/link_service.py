@@ -15,6 +15,7 @@ from app.core.short_code import generate_short_code, is_valid_short_code, genera
 from app.core.link_utils import LinkEncoder
 # QR code generation is now handled in the frontend
 from app.core.config import settings
+from app.core.exceptions import NotFoundException, BadRequestException, ConflictException
 
 class LinkService:
     """Service for handling link-related operations."""
@@ -42,10 +43,10 @@ class LinkService:
         if not space_id:
             user = crud_user.get_user(self.db, user_id)
             if not user:
-                raise ValueError("User not found")
+                raise NotFoundException("User")
             
             if not user.default_space_id:
-                raise ValueError("User has no default space. Please create a space first or specify a space_id.")
+                raise BadRequestException("User has no default space. Please create a space first or specify a space_id")
             
             space_id = user.default_space_id
         else:
@@ -58,9 +59,9 @@ class LinkService:
         short_code = link_data.get('short_code')
         if short_code:
             if not is_valid_short_code(short_code):
-                raise ValueError(
+                raise BadRequestException(
                     "Short code contains invalid characters. "
-                    "Use only letters, numbers, hyphens, and underscores."
+                    "Use only letters, numbers, hyphens, and underscores"
                 )
             
             # Check if short code is already in use
@@ -68,7 +69,7 @@ class LinkService:
                 self.db, short_code, domain_id
             )
             if existing_link:
-                raise ValueError(f"Short code '{short_code}' is already in use")
+                raise ConflictException(f"Short code '{short_code}' is already in use")
         
         # If no short code provided, generate one
         if not short_code:
@@ -76,16 +77,16 @@ class LinkService:
                 self.db, domain_id, length=settings.SHORT_CODE_LENGTH
             )
             if not short_code:
-                raise ValueError("Failed to generate a unique short code. Please try again.")
+                raise BadRequestException("Failed to generate a unique short code. Please try again")
             link_data['short_code'] = short_code
         
         # If domain is provided, verify it exists and is verified
         if domain_id:
             domain = crud_domain.get_domain(self.db, domain_id)
             if not domain:
-                raise ValueError(f"Domain '{domain_id}' not found")
+                raise NotFoundException(f"Domain '{domain_id}'")
             if not domain.verified:
-                raise ValueError(f"Domain '{domain_id}' is not verified")
+                raise BadRequestException(f"Domain '{domain_id}' is not verified")
         
         # Create the link
         db_link = crud_link.create_link(self.db, link_data, space_id)

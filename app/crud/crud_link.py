@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from app.models import models
+from app.core.exceptions import BadRequestException
 
 # Returns a link by its UUID
 def get_link(db: Session, link_id: UUID) -> models.Link | None:
@@ -116,7 +117,7 @@ def create_link(db: Session, link: Dict[str, Any], space_id: UUID) -> models.Lin
     # Ensure domain_id is provided (should be guaranteed by schema, but double-check)
     domain_id = link.get('domain_id')
     if not domain_id:
-        raise ValueError("domain_id is required for all links")
+        raise BadRequestException("domain_id is required for all links")
     
     # Prepare link data dictionary - store metadata + data field directly
     # No more divergence between API schema and database storage
